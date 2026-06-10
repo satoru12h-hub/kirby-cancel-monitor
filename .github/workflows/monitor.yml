@@ -1,0 +1,31 @@
+name: キャンセル監視
+
+on:
+  schedule:
+    # 毎日6時〜23時の間、10分おきに実行（日本時間 = UTC+9）
+    - cron: '*/10 21-23 * * *'   # JST 6:00-8:59
+    - cron: '*/10 0-13 * * *'    # JST 9:00-22:59
+  workflow_dispatch:              # 手動実行用
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 依存関係インストール
+        run: |
+          pip install playwright requests
+          playwright install chromium --with-deps
+
+      - name: 空き確認・LINE通知
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: python monitor.py
