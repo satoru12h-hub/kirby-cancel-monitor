@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 from datetime import date, datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -10,27 +11,22 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/125.0 Safari/537.36"
 }
 
-# 監視設定
 TARGETS = [
     {
         "name": "TOKYO",
-        "slug": "tokyo",
-        "base_url": "https://kirbycafe-reserve.com",
         "reserve_url": "https://kirbycafe-reserve.com/guest/tokyo/reserve/",
         "booking_url": "https://kirbycafe-reserve.com/guest/tokyo/",
         "people": 1,
         "date_from": date(2026, 6, 11),
-        "date_to": date(2026, 6, 13),
+        "date_to":   date(2026, 6, 13),
     },
     {
         "name": "OSAKA",
-        "slug": "osaka",
-        "base_url": "https://osaka.kirbycafe-reserve.com",
         "reserve_url": "https://osaka.kirbycafe-reserve.com/guest/osaka/reserve/",
         "booking_url": "https://osaka.kirbycafe-reserve.com/guest/osaka/",
         "people": 4,
         "date_from": date(2026, 6, 13),
-        "date_to": date(2026, 6, 16),
+        "date_to":   date(2026, 6, 16),
     },
 ]
 
@@ -47,114 +43,128 @@ def send_line_message(text: str):
     print(f"LINE送信結果: {resp.status_code}")
 
 
-def check_via_api(target: dict) -> list[str]:
-    """APIを直接叩いて空き日付を取得する（高速）"""
-    session = requests.Session()
-    session.headers.update(HEADERS)
-
-    session.get(target["booking_url"])
-    init = session.get(f"{target['base_url']}/api/guest/reserve/init?slug={target['slug']}")
-    if init.status_code != 200:
-        raise ValueError(f"API init failed: {init.status_code}")
-
-    data = init.json()
-    print(f"[{target['name']}] API response keys: {list(data.keys())}")
-
-    available = []
-    for key in ("calendar", "dates", "schedule", "slots", "availability"):
-        if key not in data:
-            continue
-        for entry in (data[key] if isinstance(data[key], list) else []):
-            d_str = entry.get("date") or entry.get("day") or ""
-            status = entry.get("status") or entry.get("available") or ""
-            if not d_str:
-                continue
-            try:
-                d = date.fromisoformat(d_str[:10])
-            except ValueError:
-                continue
-            if target["date_from"] <= d <= target["date_to"] and str(status) not in ("0", "full", "×", "false", "False"):
-                available.append(f"{d.month}月{d.day}日")
-
-    return available
-
-
 def check_via_browser(target: dict) -> list[str]:
-    """Playwright でブラウザを操作して空き日付を取得する（確実）"""
-    available = []
     date_from = target["date_from"]
-    date_to = target["date_to"]
+    date_to   = target["date_to"]
+    available_slots = []   # "6月12日 10:15" のような文字列
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
         ctx = browser.new_context(
             user_agent=HEADERS["User-Agent"],
-            viewport={"width": 1280, "height": 800},
+            viewport={"width": 1280, "height": 900},
         )
         page = ctx.new_page()
-
         page.goto(target["reserve_url"], wait_until="domcontentloaded", timeout=60000)
 
-        # ポップアップを閉じる
+        # ポップアップを閉じる（OKボタン）
         try:
-            page.wait_for_selector("button:has-text('OK')", timeout=15000)
-            page.click("button:has-text('OK')")
+            page.wait_for_selector("button", timeout=10000)
+            btns = page.locator("button").all()
+            for btn in btns:
+                if btn.inner_text().strip() == "OK":
+                    btn.click()
+                    break
             page.wait_for_timeout(1000)
         except PWTimeout:
             pass
 
-        # 人数入力
+        # カレンダー（テーブル）が読み込まれるまで待つ
         try:
-            page.wait_for_selector("input[type='text'], input[type='number']", timeout=15000)
-            inp = page.locator("input[type='text'], input[type='number']").first
-            inp.fill(str(target["people"]))
-            inp.press("Enter")
-            page.wait_for_timeout(3000)
+            page.wait_for_selector("table", timeout=20000)
         except PWTimeout:
-            pass
+            print(f"[{target['name']}] テーブルが見つかりません")
+            page.screenshot(path="/tmp/kirby_debug.png", full_page=True)
+            browser.close()
+            return []
 
-        # カレンダー読み込み待ち
-        try:
-            page.wait_for_selector("td, [class*='day'], [class*='date']", timeout=20000)
-        except PWTimeout:
-            pass
+        page.wait_for_timeout(1500)
 
-        page.wait_for_timeout(2000)
-
-        body_text = page.inner_text("body")[:600]
-        print(f"[{target['name']}] ページテキスト: {body_text}")
-
-        # 年月テキスト取得
-        try:
-            month_text = page.locator("[class*='month'], h2, h3").first.inner_text()
-        except Exception:
-            month_text = "6月"
-
-        # 日付セル探索
-        cells = page.locator("td, [class*='day-cell'], [class*='calendar-day']").all()
-        for cell in cells:
-            try:
-                txt = cell.inner_text().strip()
-                if not txt.isdigit():
-                    continue
-                day_num = int(txt)
-                if not (1 <= day_num <= 31):
-                    continue
-                if "6月" in month_text or "June" in month_text:
-                    target_date = date(date_from.year, 6, day_num)
-                    if not (date_from <= target_date <= date_to):
-                        continue
-                else:
-                    continue
-                cell_html = cell.evaluate("el => el.outerHTML")
-                if "×" not in cell_html:
-                    available.append(f"6月{day_num}日")
-            except Exception:
+        # 対象期間の月ごとにチェック
+        checked_months = set()
+        for check_date in _date_range(date_from, date_to):
+            ym = (check_date.year, check_date.month)
+            if ym in checked_months:
                 continue
+            checked_months.add(ym)
+
+            # 現在表示されている年月を取得
+            for _ in range(6):  # 最大6ヶ月分ナビゲート
+                month_el = page.locator("body").inner_text()
+                m = re.search(r'(\d{4})年(\d{1,2})月', month_el)
+                if m:
+                    cur_year, cur_month = int(m.group(1)), int(m.group(2))
+                    if (cur_year, cur_month) == ym:
+                        break
+                    elif (cur_year * 12 + cur_month) > (ym[0] * 12 + ym[1]):
+                        # 表示が未来すぎる → 前月ボタン
+                        btns = page.locator("button").all()
+                        for btn in btns:
+                            if "chevron_left" in btn.inner_text():
+                                btn.click()
+                                page.wait_for_timeout(800)
+                                break
+                    else:
+                        # 表示が過去すぎる → 次月ボタン
+                        btns = page.locator("button").all()
+                        for btn in btns:
+                            if "chevron_right" in btn.inner_text():
+                                btn.click()
+                                page.wait_for_timeout(800)
+                                break
+                else:
+                    break
+
+            # テーブルヘッダーから 列インデックス→日付 のマッピングを作成
+            headers = page.locator("table th").all_inner_texts()
+            col_to_day = {}
+            for i, h in enumerate(headers):
+                dm = re.match(r'(\d+)', h.strip())
+                if dm:
+                    col_to_day[i - 1] = int(dm.group(1))  # th[0]は空なので-1
+
+            # 各行を走査して ○ セルを探す
+            rows = page.locator("table tr").all()
+            for row in rows:
+                # 行ラベル（時間帯）を取得
+                time_label = ""
+                th_els = row.locator("th").all()
+                if th_els:
+                    time_label = th_els[0].inner_text().strip()
+
+                cells = row.locator("td").all()
+                for col_idx, cell in enumerate(cells):
+                    txt = cell.inner_text().strip()
+                    if txt != "○":
+                        continue
+                    day_num = col_to_day.get(col_idx)
+                    if day_num is None:
+                        continue
+                    try:
+                        slot_date = date(ym[0], ym[1], day_num)
+                    except ValueError:
+                        continue
+                    if date_from <= slot_date <= date_to:
+                        slot_str = f"{ym[1]}月{day_num}日 {time_label}".strip()
+                        available_slots.append(slot_str)
 
         browser.close()
 
-    return list(dict.fromkeys(available))
+    # 重複除去・ソート
+    return sorted(set(available_slots))
+
+
+def _date_range(d_from: date, d_to: date):
+    """date_from から date_to まで月単位のリストを返す"""
+    months = []
+    y, m = d_from.year, d_from.month
+    while (y, m) <= (d_to.year, d_to.month):
+        months.append(date(y, m, 1))
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+    return months
 
 
 def check_target(target: dict) -> list[str]:
@@ -163,21 +173,13 @@ def check_target(target: dict) -> list[str]:
         print(f"[{target['name']}] 監視期間終了")
         return []
 
-    available = []
     try:
-        available = check_via_api(target)
-        print(f"[{target['name']}] API結果: {available}")
+        result = check_via_browser(target)
+        print(f"[{target['name']}] 結果: {result}")
+        return result
     except Exception as e:
-        print(f"[{target['name']}] API方式失敗、ブラウザ方式に切替: {e}")
-
-    if not available:
-        try:
-            available = check_via_browser(target)
-            print(f"[{target['name']}] ブラウザ結果: {available}")
-        except Exception as e:
-            print(f"[{target['name']}] ブラウザ方式も失敗: {e}")
-
-    return available
+        print(f"[{target['name']}] エラー: {e}")
+        return []
 
 
 def main():
@@ -192,14 +194,14 @@ def main():
                 f"【カービィカフェ {target['name']}】\n"
                 f"キャンセル空きが出ました！🎉\n"
                 f"対象期間: {period}（{target['people']}名）\n\n"
-                + "\n".join(f"✅ {d}" for d in available)
+                + "\n".join(f"✅ {s}" for s in available[:10])
                 + f"\n\n今すぐ予約を！\n{target['booking_url']}"
             )
             notifications.append(msg)
 
     if notifications:
         send_line_message("\n\n---\n\n".join(notifications))
-        print(f"LINE通知送信完了")
+        print("LINE通知送信完了")
     else:
         print(f"空きなし ({now_str})")
 
