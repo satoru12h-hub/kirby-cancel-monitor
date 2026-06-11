@@ -2,15 +2,18 @@ name: キャンセル監視
 
 on:
   schedule:
-    # 毎日6時〜23時の間、5分おきに実行（日本時間 = UTC+9）
-    - cron: '*/5 21-23 * * *'   # JST 6:00-8:59
-    - cron: '*/5 0-13 * * *'    # JST 9:00-22:59
-  workflow_dispatch:              # 手動実行用
+    # 6時間ごとに起動（日本時間 6:00/12:00/18:00/0:00）
+    # ジョブ内部で3分おきにループするため、cronの精度は問題なし
+    - cron: '0 21 * * *'   # JST 6:00
+    - cron: '0 3 * * *'    # JST 12:00
+    - cron: '0 9 * * *'    # JST 18:00
+    - cron: '0 15 * * *'   # JST 0:00
+  workflow_dispatch:        # 手動実行用
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 350   # 最大5時間50分
 
     steps:
       - uses: actions/checkout@v4
@@ -24,8 +27,20 @@ jobs:
           pip install playwright requests
           playwright install chromium --with-deps
 
-      - name: 空き確認・LINE通知
+      - name: 空き確認ループ（3分おき・最大5時間45分）
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
-        run: python monitor.py
+        run: |
+          END=$((SECONDS + 345 * 60))   # 5時間45分後まで
+          while [ $SECONDS -lt $END ]; do
+            python monitor.py
+            # 次のチェックまで180秒（3分）待つ（残り時間が少なければ終了）
+            REMAINING=$((END - SECONDS))
+            if [ $REMAINING -gt 180 ]; then
+              sleep 180
+            else
+              break
+            fi
+          done
+          echo "ループ終了 - 次の起動まで待機"
