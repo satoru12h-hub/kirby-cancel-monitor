@@ -69,12 +69,21 @@ def check_via_browser(target: dict) -> list[str]:
         except PWTimeout:
             pass
 
+        # ページ全体が安定するまで待つ
+        try:
+            page.wait_for_load_state("networkidle", timeout=30000)
+        except PWTimeout:
+            pass
+
+        page.wait_for_timeout(2000)
+        page.screenshot(path="/tmp/kirby_debug.png", full_page=True)
+        print(f"[{target['name']}] ページ本文: {page.inner_text('body')[:400]}")
+
         # カレンダー（テーブル）が読み込まれるまで待つ
         try:
             page.wait_for_selector("table", timeout=20000)
         except PWTimeout:
             print(f"[{target['name']}] テーブルが見つかりません")
-            page.screenshot(path="/tmp/kirby_debug.png", full_page=True)
             browser.close()
             return []
 
