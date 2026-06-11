@@ -235,28 +235,59 @@ def check_target(target: dict) -> list[str]:
         return []
 
 
+SEEN_FILE = "/tmp/kirby_seen_slots.txt"
+
+
+def load_seen() -> set:
+    try:
+        with open(SEEN_FILE) as f:
+            return set(f.read().splitlines())
+    except FileNotFoundError:
+        return set()
+
+
+def save_seen(slots: set):
+    with open(SEEN_FILE, "w") as f:
+        f.write("\n".join(sorted(slots)))
+
+
 def main():
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
     notifications = []
+    all_current_slots = set()
+    seen = load_seen()
 
     for target in TARGETS:
         available = check_target(target)
-        if available:
+        key_prefix = target["name"]
+        current_keys = {f"{key_prefix}:{s}" for s in available}
+        all_current_slots |= current_keys
+
+        # 前回から新しく増えた空き枠だけ通知
+        new_slots = [s for s in available if f"{key_prefix}:{s}" not in seen]
+
+        if new_slots:
             period = f"{target['date_from'].month}月{target['date_from'].day}日〜{target['date_to'].month}月{target['date_to'].day}日"
             msg = (
                 f"【カービィカフェ {target['name']}】\n"
                 f"キャンセル空きが出ました！🎉\n"
                 f"対象期間: {period}（{target['people']}名）\n\n"
-                + "\n".join(f"✅ {s}" for s in available[:10])
+                + "\n".join(f"✅ {s}" for s in new_slots[:10])
                 + f"\n\n今すぐ予約を！\n{target['booking_url']}"
             )
             notifications.append(msg)
+            print(f"[{target['name']}] 新着空き: {new_slots}")
+        else:
+            print(f"[{target['name']}] 新しい空きなし（既通知: {len(seen & current_keys)}件）")
+
+    # 今回の全空き枠を保存（次回との比較用）
+    save_seen(all_current_slots)
 
     if notifications:
         send_line_message("\n\n---\n\n".join(notifications))
         print("LINE通知送信完了")
     else:
-        print(f"空きなし ({now_str})")
+        print(f"変化なし ({now_str})")
 
 
 if __name__ == "__main__":
