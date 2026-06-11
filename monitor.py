@@ -74,16 +74,60 @@ def check_via_browser(target: dict) -> list[str]:
             page.wait_for_load_state("networkidle", timeout=30000)
         except PWTimeout:
             pass
+        page.wait_for_timeout(1500)
 
-        page.wait_for_timeout(2000)
+        print(f"[{target['name']}] ページ本文: {page.inner_text('body')[:300]}")
+
+        # 人数を選択してカレンダーを表示させる
+        people_str = str(target["people"])
+        selected = False
+
+        # ① native <select> の場合
+        try:
+            sel = page.locator("select").first
+            if sel.count() > 0:
+                sel.select_option(people_str)
+                page.wait_for_timeout(1500)
+                selected = True
+                print(f"[{target['name']}] selectで{people_str}名を選択")
+        except Exception:
+            pass
+
+        # ② text/number input の場合
+        if not selected:
+            try:
+                inp = page.locator("input[type='text'], input[type='number']").first
+                if inp.count() > 0:
+                    inp.click()
+                    inp.fill(people_str)
+                    page.keyboard.press("Tab")
+                    page.wait_for_timeout(1500)
+                    selected = True
+                    print(f"[{target['name']}] inputで{people_str}名を入力")
+            except Exception:
+                pass
+
+        # ③ カスタムドロップダウン（div/button）の場合
+        if not selected:
+            try:
+                # ドロップダウン的なものをクリックして開く
+                page.locator("[class*='select'], [class*='dropdown'], [class*='picker']").first.click()
+                page.wait_for_timeout(500)
+                # 値に一致する選択肢をクリック
+                page.locator(f"[role='option']:has-text('{people_str}'), li:has-text('{people_str}')").first.click()
+                page.wait_for_timeout(1500)
+                selected = True
+                print(f"[{target['name']}] カスタムdropdownで{people_str}名を選択")
+            except Exception:
+                pass
+
         page.screenshot(path="/tmp/kirby_debug.png", full_page=True)
-        print(f"[{target['name']}] ページ本文: {page.inner_text('body')[:400]}")
 
         # カレンダー（テーブル）が読み込まれるまで待つ
         try:
             page.wait_for_selector("table", timeout=20000)
         except PWTimeout:
-            print(f"[{target['name']}] テーブルが見つかりません")
+            print(f"[{target['name']}] テーブルが見つかりません（人数選択: {selected}）")
             browser.close()
             return []
 
