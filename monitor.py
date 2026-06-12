@@ -16,17 +16,9 @@ TARGETS = [
         "name": "TOKYO",
         "reserve_url": "https://kirbycafe-reserve.com/guest/tokyo/reserve/",
         "booking_url": "https://kirbycafe-reserve.com/guest/tokyo/",
-        "people": 1,
-        "date_from": date(2026, 6, 11),
-        "date_to":   date(2026, 6, 13),
-    },
-    {
-        "name": "OSAKA",
-        "reserve_url": "https://osaka.kirbycafe-reserve.com/guest/osaka/reserve/",
-        "booking_url": "https://osaka.kirbycafe-reserve.com/guest/osaka/",
-        "people": 4,
+        "people": 2,
         "date_from": date(2026, 6, 13),
-        "date_to":   date(2026, 6, 16),
+        "date_to":   date(2026, 6, 30),
     },
 ]
 
