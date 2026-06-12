@@ -160,6 +160,13 @@ def check_via_browser(target: dict) -> list[str]:
                 else:
                     break
 
+            # スキャン前に表示中の年月を検証（違う月をスキャンしない）
+            shown = re.search(r'(\d{4})年(\d{1,2})月', page.locator("body").inner_text())
+            if not shown or (int(shown.group(1)), int(shown.group(2))) != ym:
+                print(f"[{target['name']}] 警告: {ym[0]}年{ym[1]}月に移動できず（表示中: {shown.group(0) if shown else '不明'}）スキップ")
+                continue
+            print(f"[{target['name']}] {shown.group(0)}のカレンダーをスキャン中")
+
             # テーブルヘッダーから 列インデックス→日付 のマッピングを作成
             headers = page.locator("table th").all_inner_texts()
             col_to_day = {}
