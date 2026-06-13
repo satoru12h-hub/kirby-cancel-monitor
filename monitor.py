@@ -16,9 +16,9 @@ TARGETS = [
         "name": "TOKYO",
         "reserve_url": "https://kirbycafe-reserve.com/guest/tokyo/reserve/",
         "booking_url": "https://kirbycafe-reserve.com/guest/tokyo/",
-        "people": 2,
-        "date_from": date(2026, 6, 13),
-        "date_to":   date(2026, 6, 30),
+        "people": 4,
+        "date_from": date(2026, 7, 10),
+        "date_to":   date(2026, 7, 20),
     },
 ]
 
