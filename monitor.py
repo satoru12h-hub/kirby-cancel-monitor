@@ -234,35 +234,60 @@ def check_target(target: dict) -> list[str]:
         return []
 
 
-SEEN_FILE = "/tmp/kirby_seen_slots.txt"
+# 通知済みの枠を記録するファイル（リポジトリ内に置きジョブ交代後も維持）
+SEEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "notified_slots.txt")
 
 
 def load_seen() -> set:
+    """通知済み枠を読み込む。CI環境では最新をリモートから取得してから読む。"""
+    if os.environ.get("GITHUB_ACTIONS"):
+        # 他ジョブが追記している可能性があるので最新を取り込む
+        _git("pull", "--rebase", "--autostash")
     try:
-        with open(SEEN_FILE) as f:
-            return set(f.read().splitlines())
+        with open(SEEN_FILE, encoding="utf-8") as f:
+            return {line for line in f.read().splitlines() if line.strip()}
     except FileNotFoundError:
         return set()
 
 
-def save_seen(slots: set):
-    with open(SEEN_FILE, "w") as f:
-        f.write("\n".join(sorted(slots)))
+def save_seen(seen: set):
+    """通知済み枠を保存。CI環境ではリポジトリにコミットして永続化する。"""
+    with open(SEEN_FILE, "w", encoding="utf-8") as f:
+        f.write("\n".join(sorted(seen)))
+
+    if not os.environ.get("GITHUB_ACTIONS"):
+        return
+    _git("config", "user.name", "kirby-bot")
+    _git("config", "user.email", "bot@users.noreply.github.com")
+    _git("add", SEEN_FILE)
+    committed = _git("commit", "-m", "通知済み枠を更新")
+    if committed:
+        _git("pull", "--rebase", "--autostash")
+        _git("push")
+
+
+def _git(*args) -> bool:
+    """gitコマンドを実行。成功でTrue。失敗しても全体は止めない。"""
+    import subprocess
+    try:
+        r = subprocess.run(["git", *args], capture_output=True, text=True, cwd=os.path.dirname(SEEN_FILE))
+        return r.returncode == 0
+    except Exception as e:
+        print(f"git {args[0]} 失敗: {e}")
+        return False
 
 
 def main():
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
     notifications = []
-    all_current_slots = set()
     seen = load_seen()
+    newly_notified = set()
 
     for target in TARGETS:
         available = check_target(target)
         key_prefix = target["name"]
-        current_keys = {f"{key_prefix}:{s}" for s in available}
-        all_current_slots |= current_keys
 
-        # 前回から新しく増えた空き枠だけ通知
+        # まだ一度も通知していない枠だけを新着とする（累積方式）
         new_slots = [s for s in available if f"{key_prefix}:{s}" not in seen]
 
         if new_slots:
@@ -275,15 +300,16 @@ def main():
                 + f"\n\n今すぐ予約を！\n{target['booking_url']}"
             )
             notifications.append(msg)
+            newly_notified |= {f"{key_prefix}:{s}" for s in new_slots}
             print(f"[{target['name']}] 新着空き: {new_slots}")
         else:
+            current_keys = {f"{key_prefix}:{s}" for s in available}
             print(f"[{target['name']}] 新しい空きなし（既通知: {len(seen & current_keys)}件）")
-
-    # 今回の全空き枠を保存（次回との比較用）
-    save_seen(all_current_slots)
 
     if notifications:
         send_line_message("\n\n---\n\n".join(notifications))
+        # 通知した枠を記録に「追加」する（消さずに積み重ね）
+        save_seen(seen | newly_notified)
         print("LINE通知送信完了")
     else:
         print(f"変化なし ({now_str})")
