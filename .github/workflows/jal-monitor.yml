@@ -1,0 +1,50 @@
+name: JAL工場見学 空き監視
+
+on:
+  schedule:
+    # 6時間ごとに起動。ジョブ内部で3分おきにループするためcronの精度は問題なし
+    - cron: '30 21 * * *'   # JST 6:30
+    - cron: '30 3 * * *'    # JST 12:30
+    - cron: '30 9 * * *'    # JST 18:30
+    - cron: '30 15 * * *'   # JST 0:30
+  workflow_dispatch:        # 手動実行用
+
+permissions:
+  contents: write   # 通知済み枠ファイルをコミットするため
+
+concurrency:
+  group: jal-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 依存関係インストール
+        run: |
+          pip install playwright requests
+          playwright install chromium --with-deps
+
+      - name: 空き確認ループ（3分おき・最大5時間45分）
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: |
+          END=$((SECONDS + 345 * 60))
+          while [ $SECONDS -lt $END ]; do
+            python jal_monitor.py || true
+            REMAINING=$((END - SECONDS))
+            if [ $REMAINING -gt 180 ]; then
+              sleep 180
+            else
+              break
+            fi
+          done
+          echo "ループ終了 - 次の起動まで待機"
