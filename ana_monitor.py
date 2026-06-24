@@ -15,7 +15,7 @@ LINE_USER_ID = os.environ["LINE_USER_ID"]
 
 # ===== 監視設定 =====
 PEOPLE = 4                 # 何名分の残席を探すか（残N >= PEOPLE で通知）
-MONTHS_AHEAD = 3           # 当月から何ヶ月先まで見るか
+MONTHS_AHEAD = 1           # 当月から何ヶ月先まで見るか（予約受付は1ヶ月先まで）
 # ====================
 
 CAL_URL = "https://ana-blue-hangar-tour.resv.jp/reserve/calendar.php"

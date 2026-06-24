@@ -17,7 +17,7 @@ LINE_USER_ID = os.environ["LINE_USER_ID"]
 # ===== 監視設定 =====
 PEOPLE = 4                         # 何名分の空きを探すか
 COURSE_KEYWORD = "工場見学コース"   # 監視するコース名（部分一致）。""にすると全コース
-MONTHS_AHEAD = 4                   # 今月から何ヶ月先まで見るか
+MONTHS_AHEAD = 1                   # 今月から何ヶ月先まで見るか（予約受付は1ヶ月先まで）
 ENTRY_URL = "https://jalfactorytour.my.salesforce-sites.com/"  # 通知に載せる予約入口
 # ====================
 
