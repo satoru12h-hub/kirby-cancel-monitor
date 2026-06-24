@@ -128,29 +128,40 @@ def scan_month(page, y: int, m: int) -> list[tuple]:
                     continue
                 t = times[i] if i < len(times) else "?"
                 found.append((slot_date, course, t))
-    return found
+    # 第2要素 = 見つかったカレンダー表の数（0なら異常＝ブロック/サイト変更の疑い）
+    return found, len(grid)
 
 
-def check() -> list[str]:
+def check():
+    """戻り値: (空き枠リスト, 正常に読めたか)。
+    どの月でもカレンダー表が1つも取れなければ healthy=False（異常）。"""
     slots = set()
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
-        page = browser.new_context(user_agent=UA, locale="ja-JP").new_page()
-        for (y, m) in _months_to_scan():
-            try:
-                for slot_date, course, t in scan_month(page, y, m):
-                    label = f"{slot_date.month}月{slot_date.day}日 {course} {t}"
-                    slots.add(label)
-            except PWTimeout:
-                print(f"[{y}/{m}] タイムアウト")
-            except Exception as e:
-                print(f"[{y}/{m}] エラー: {e}")
-        browser.close()
-    return sorted(slots)
+    tables_seen = 0
+    months = _months_to_scan()
+    for (y, m) in months:
+        # 月ごとに使い捨てブラウザ。1月失敗しても他月は続行
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+                page = browser.new_context(user_agent=UA, locale="ja-JP").new_page()
+                found, n_tables = scan_month(page, y, m)
+                browser.close()
+            tables_seen += n_tables
+            for slot_date, course, t in found:
+                slots.add(f"{slot_date.month}月{slot_date.day}日 {course} {t}")
+        except PWTimeout:
+            print(f"[{y}/{m}] タイムアウト")
+        except Exception as e:
+            print(f"[{y}/{m}] エラー: {e}")
+    healthy = tables_seen > 0
+    print(f"読み取れたカレンダー表: {tables_seen}個 / 正常={healthy}")
+    return sorted(slots), healthy
 
 
 # ===== 通知済み記録（リポジトリにコミットしてジョブ交代後も維持）=====
 SEEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "notified_slots_jal.txt")
+# 自己点検の状態ファイル（"ok" / "ng:YYYY-MM-DD" を記録。異常アラートの連発を防ぐ）
+HEALTH_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jal_health.txt")
 
 
 def load_seen() -> set:
@@ -186,11 +197,60 @@ def _git(*args) -> bool:
         return False
 
 
+def _read_state(path: str) -> str:
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return ""
+
+
+def _write_state(path: str, value: str):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(value)
+    if not os.environ.get("GITHUB_ACTIONS"):
+        return
+    _git("config", "user.name", "jal-bot")
+    _git("config", "user.email", "bot@users.noreply.github.com")
+    _git("add", os.path.basename(path))
+    if _git("commit", "-m", "JAL自己点検の状態を更新"):
+        _git("pull", "--rebase", "--autostash")
+        _git("push")
+
+
+def report_health(healthy: bool):
+    """異常検知時に1日1回だけアラート、復旧時に1回だけ復旧通知を出す。"""
+    today = date.today().isoformat()
+    prev = _read_state(HEALTH_FILE)
+    if not healthy:
+        # すでに今日アラート済みなら鳴らさない（3分ループでの連発防止）
+        if prev == f"ng:{today}":
+            print("異常継続中（本日アラート済み）")
+            return
+        send_line_message(
+            "⚠️【JAL工場見学 監視】\n"
+            "予約ページをいつも通り読み取れませんでした。\n"
+            "アクセス制限やサイトの仕様変更の可能性があります。"
+            "（空き通知が止まっているおそれ）\n"
+            "しばらく自動で再試行します。"
+        )
+        _write_state(HEALTH_FILE, f"ng:{today}")
+        print("異常アラートを送信")
+    else:
+        if prev.startswith("ng:"):
+            send_line_message("✅【JAL工場見学 監視】ページの読み取りが復旧しました。監視を継続します。")
+            print("復旧通知を送信")
+        _write_state(HEALTH_FILE, "ok")
+
+
 def main():
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
     seen = load_seen()
-    available = check()
+    available, healthy = check()
     print(f"検出した予約可能枠: {available}")
+
+    # 自己点検（ページが正しく読めているか）の通知
+    report_health(healthy)
 
     new_slots = [s for s in available if f"JAL:{s}" not in seen]
     if new_slots:
