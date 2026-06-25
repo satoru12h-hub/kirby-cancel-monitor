@@ -80,7 +80,7 @@ def _goto_next_month(page, prev_label: str) -> bool:
 def check():
     """戻り値: (空き枠リスト, 正常に読めたか)。
     カレンダーの枠(ul.data-month)が一度も取れなければ healthy=False。"""
-    slots = set()
+    slots = {}   # 識別キー(日付+時間) -> 残席数。残席は変動するのでキーには含めない
     months_seen = 0
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
@@ -103,7 +103,8 @@ def check():
                     continue
                 if slot_date < date.today():
                     continue
-                slots.add(f"{s['m']}月{s['d']}日 {s['time']}（残{s['rem']}）")
+                key = f"{s['m']}月{s['d']}日 {s['time']}"
+                slots[key] = s["rem"]   # 残席は最新値で上書き（表示用）
             if i < MONTHS_AHEAD:
                 if not _goto_next_month(page, info["label"]):
                     break
@@ -111,7 +112,8 @@ def check():
         browser.close()
     healthy = months_seen > 0
     print(f"読み取れた月: {months_seen} / 正常={healthy}")
-    return sorted(slots), healthy
+    # (識別キー, 残席数) のリストを返す。重複判定はキーのみで行う
+    return sorted(slots.items()), healthy
 
 
 # ===== 通知済み記録・自己点検（リポジトリにコミットして永続化）=====
@@ -201,16 +203,17 @@ def main():
 
     report_health(healthy)
 
-    new_slots = [s for s in available if f"ANA:{s}" not in seen]
+    # 重複判定は識別キー（日付+時間）のみ。残席数が変わっても再通知しない
+    new_slots = [(key, rem) for (key, rem) in available if f"ANA:{key}" not in seen]
     if new_slots:
         msg = (
             f"【ANA Blue Hangar Tour 工場見学】\n"
             f"{PEOPLE}名で予約できる枠が出ました！🎉\n\n"
-            + "\n".join(f"✅ {s}" for s in new_slots[:15])
+            + "\n".join(f"✅ {key}（残{rem}）" for key, rem in new_slots[:15])
             + f"\n\n今すぐ予約を！\n{ENTRY_URL}"
         )
         send_line_message(msg)
-        save_seen(seen | {f"ANA:{s}" for s in new_slots})
+        save_seen(seen | {f"ANA:{key}" for key, _ in new_slots})
         print(f"LINE通知送信完了: {new_slots}")
     else:
         print(f"新しい空きなし ({now_str}) / 既通知{len(seen)}件")
