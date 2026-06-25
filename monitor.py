@@ -16,9 +16,14 @@ TARGETS = [
         "name": "TOKYO",
         "reserve_url": "https://kirbycafe-reserve.com/guest/tokyo/reserve/",
         "booking_url": "https://kirbycafe-reserve.com/guest/tokyo/",
-        "people": 4,
-        "date_from": date(2026, 7, 8),
-        "date_to":   date(2026, 7, 10),
+        "people": 3,
+        "date_from": date(2026, 7, 28),
+        "date_to":   date(2026, 7, 29),
+        # 日(day)ごとに通知する時間帯（分単位 lo<=t<=hi）。指定日のみ対象。
+        "time_filter": {
+            28: (17 * 60, 24 * 60),   # 7/28は17:00以降
+            29: (0, 14 * 60),         # 7/29は14:00まで
+        },
     },
 ]
 
@@ -196,9 +201,24 @@ def check_via_browser(target: dict) -> list[str]:
                         slot_date = date(ym[0], ym[1], day_num)
                     except ValueError:
                         continue
-                    if date_from <= slot_date <= date_to:
-                        slot_str = f"{ym[1]}月{day_num}日 {time_label}".strip()
-                        available_slots.append(slot_str)
+                    if not (date_from <= slot_date <= date_to):
+                        continue
+
+                    # 時間帯フィルタ（指定があれば、許可された時間帯の枠のみ）
+                    time_filter = target.get("time_filter")
+                    if time_filter is not None:
+                        if day_num not in time_filter:
+                            continue
+                        tm = re.search(r'(\d{1,2}):(\d{2})', time_label)
+                        if not tm:
+                            continue
+                        minutes = int(tm.group(1)) * 60 + int(tm.group(2))
+                        lo, hi = time_filter[day_num]
+                        if not (lo <= minutes <= hi):
+                            continue
+
+                    slot_str = f"{ym[1]}月{day_num}日 {time_label}".strip()
+                    available_slots.append(slot_str)
 
         browser.close()
 
