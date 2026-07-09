@@ -25,6 +25,15 @@ TARGETS = [
             29: (0, 14 * 60),         # 7/29は14:00まで
         },
     },
+    {
+        "name": "TOKYO 2名 7/16-19",
+        "reserve_url": "https://kirbycafe-reserve.com/guest/tokyo/reserve/",
+        "booking_url": "https://kirbycafe-reserve.com/guest/tokyo/",
+        "people": 2,
+        "date_from": date(2026, 7, 16),
+        "date_to":   date(2026, 7, 19),
+        # 時間帯指定なし（全時間帯が対象）
+    },
 ]
 
 
