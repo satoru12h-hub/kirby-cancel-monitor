@@ -19,6 +19,7 @@ class BookingConfig:
     kana_last: str
     kana_first: str
     mobile: str
+    mobile_fallback: str
     email: str
     privacy_consent: str
 
@@ -28,6 +29,7 @@ class BookingResult:
     status: str  # success / lost / error
     code: str
     start_at: str = ""
+    used_mobile_fallback: bool = False
 
 
 def is_enabled() -> bool:
@@ -41,6 +43,7 @@ def load_config() -> BookingConfig:
         kana_last=os.environ.get("KIRBY_KANA_LAST", "").strip(),
         kana_first=os.environ.get("KIRBY_KANA_FIRST", "").strip(),
         mobile=os.environ.get("KIRBY_MOBILE", "").strip(),
+        mobile_fallback=os.environ.get("KIRBY_MOBILE_FALLBACK", "").strip(),
         email=os.environ.get("KIRBY_EMAIL", "").strip(),
         privacy_consent=os.environ.get("KIRBY_PRIVACY_CONSENT", "").strip(),
     )
@@ -58,6 +61,8 @@ def validate_config(config: BookingConfig) -> list[str]:
     errors = [name for name, value in values.items() if not value]
     if config.mobile and not re.fullmatch(r"\d{10,13}", config.mobile):
         errors.append("KIRBY_MOBILE_FORMAT")
+    if config.mobile_fallback and not re.fullmatch(r"\d{10,13}", config.mobile_fallback):
+        errors.append("KIRBY_MOBILE_FALLBACK_FORMAT")
     if config.email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", config.email):
         errors.append("KIRBY_EMAIL_FORMAT")
     if config.privacy_consent != "YES":
@@ -101,10 +106,22 @@ def complete_booking(page, slot_link, start_at: str, config: BookingConfig) -> B
         check_button = page.get_by_role("button", name="入力内容を確認", exact=True)
         if check_button.count() != 1:
             raise RuntimeError("check_button_not_unique")
-        check_button.click()
-
         confirm_button = page.get_by_role("button", name="予約確定", exact=True)
-        confirm_button.wait_for(state="visible", timeout=15000)
+        used_mobile_fallback = False
+        check_button.click()
+        try:
+            confirm_button.wait_for(state="visible", timeout=10000)
+        except PWTimeout:
+            # 国際番号等が予約フォームの検証で弾かれた場合に限り、予備番号で再検証する。
+            if not config.mobile_fallback or config.mobile_fallback == config.mobile:
+                raise RuntimeError("form_validation_failed")
+            mobile = page.get_by_label("電話番号", exact=True)
+            if mobile.count() != 1:
+                raise RuntimeError("mobile_field_not_unique")
+            mobile.fill(config.mobile_fallback)
+            used_mobile_fallback = True
+            check_button.click()
+            confirm_button.wait_for(state="visible", timeout=10000)
 
         policy = page.locator(".v-dialog--active .overflow-y-auto")
         if policy.count() != 1:
@@ -120,7 +137,7 @@ def complete_booking(page, slot_link, start_at: str, config: BookingConfig) -> B
         confirm_button.click()
         page.wait_for_url("**/reserve/done", timeout=30000)
         held = False
-        return BookingResult("success", "confirmed", start_at)
+        return BookingResult("success", "confirmed", start_at, used_mobile_fallback)
     except Exception as exc:
         # 個人情報やページ本文はログに出さず、安全なエラー種別だけ返す。
         code = str(exc).split(":", 1)[0] if isinstance(exc, RuntimeError) else type(exc).__name__

@@ -46,6 +46,7 @@ jobs:
           KIRBY_KANA_LAST: ${{ secrets.KIRBY_KANA_LAST }}
           KIRBY_KANA_FIRST: ${{ secrets.KIRBY_KANA_FIRST }}
           KIRBY_MOBILE: ${{ secrets.KIRBY_MOBILE }}
+          KIRBY_MOBILE_FALLBACK: ${{ secrets.KIRBY_MOBILE_FALLBACK }}
           KIRBY_EMAIL: ${{ secrets.KIRBY_EMAIL }}
           KIRBY_PRIVACY_CONSENT: ${{ vars.KIRBY_PRIVACY_CONSENT }}
         run: |

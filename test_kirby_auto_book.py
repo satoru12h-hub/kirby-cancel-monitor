@@ -17,13 +17,14 @@ class AutoBookConfigTests(unittest.TestCase):
             kana_last="ホシノ",
             kana_first="タロウ",
             mobile="09012345678",
+            mobile_fallback="",
             email="test@example.com",
             privacy_consent="YES",
         )
         self.assertEqual(validate_config(config), [])
 
     def test_rejects_missing_or_invalid_values(self):
-        config = BookingConfig("", "", "", "", "abc", "bad", "")
+        config = BookingConfig("", "", "", "", "abc", "x", "bad", "")
         errors = validate_config(config)
         self.assertIn("KIRBY_NAME_LAST", errors)
         self.assertIn("KIRBY_MOBILE_FORMAT", errors)
@@ -33,7 +34,7 @@ class AutoBookConfigTests(unittest.TestCase):
     def test_never_books_outside_july_2026(self):
         config = BookingConfig(
             "星野", "太郎", "ホシノ", "タロウ",
-            "09012345678", "test@example.com", "YES",
+            "09012345678", "", "test@example.com", "YES",
         )
         result = complete_booking(None, None, "2026-08-01 10:00", config)
         self.assertEqual((result.status, result.code), ("error", "outside_july_2026"))

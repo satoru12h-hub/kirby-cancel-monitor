@@ -94,6 +94,7 @@ TARGETS = [
 - `KIRBY_NAME_LAST` / `KIRBY_NAME_FIRST`: 姓／名
 - `KIRBY_KANA_LAST` / `KIRBY_KANA_FIRST`: セイ／メイ
 - `KIRBY_MOBILE`: 電話番号（数字のみ）
+- `KIRBY_MOBILE_FALLBACK`: 最初の電話番号がフォーム検証で弾かれた場合だけ使う予備番号（任意）
 - `KIRBY_EMAIL`: 予約確認メールアドレス
 
 以下は GitHub Actions Variables。すべて揃うまで自動予約は無効。

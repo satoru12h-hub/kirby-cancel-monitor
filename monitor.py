@@ -432,11 +432,12 @@ def main():
             warning = ""
             if not persisted or not disabled:
                 warning = "\n⚠️ 自動停止の一部に失敗しました。追加予約防止の確認が必要です。"
+            phone_note = "\n電話番号: 予備番号を使用" if booking_result.used_mobile_fallback else ""
             send_line_message(
                 f"【カービィカフェ 自動予約完了】\n"
                 f"{key_prefix}\n✅ {booked_slot}\n"
                 f"人数: {target['people']}名\n"
-                f"予約確認メールもご確認ください。{warning}"
+                f"予約確認メールもご確認ください。{phone_note}{warning}"
             )
             print(f"[{key_prefix}] 自動予約完了。以後の自動予約を停止")
             return
