@@ -1,8 +1,19 @@
+from __future__ import annotations
+
 import os
 import re
 import requests
 from datetime import date, datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+
+from kirby_auto_book import (
+    BookingConfig,
+    BookingResult,
+    complete_booking,
+    is_enabled as auto_book_is_enabled,
+    load_config as load_auto_book_config,
+    validate_config as validate_auto_book_config,
+)
 
 LINE_TOKEN = os.environ["LINE_CHANNEL_ACCESS_TOKEN"]
 LINE_USER_ID = os.environ["LINE_USER_ID"]
@@ -19,6 +30,7 @@ TARGETS = [
         "people": 2,
         "date_from": date(2026, 7, 16),
         "date_to":   date(2026, 7, 19),
+        "auto_book_july_2026": True,
         # 時間帯指定なし（全時間帯が対象）
     },
 ]
@@ -36,10 +48,16 @@ def send_line_message(text: str):
     print(f"LINE送信結果: {resp.status_code}")
 
 
-def check_via_browser(target: dict) -> list[str]:
+def check_via_browser(
+    target: dict,
+    auto_book: bool = False,
+    booking_config: BookingConfig | None = None,
+) -> tuple[list[str], BookingResult | None]:
     date_from = target["date_from"]
     date_to   = target["date_to"]
     available_slots = []   # "6月12日 10:15" のような文字列
+    booking_candidates = []
+    booking_result = None
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
@@ -122,7 +140,7 @@ def check_via_browser(target: dict) -> list[str]:
         except PWTimeout:
             print(f"[{target['name']}] テーブルが見つかりません（人数選択: {selected}）")
             browser.close()
-            return []
+            return [], None
 
         page.wait_for_timeout(1500)
 
@@ -216,10 +234,27 @@ def check_via_browser(target: dict) -> list[str]:
                     slot_str = f"{ym[1]}月{day_num}日 {time_label}".strip()
                     available_slots.append(slot_str)
 
+                    # 自動予約は明示的に許可された2026年7月枠だけ。
+                    if auto_book and booking_config and slot_date.year == 2026 and slot_date.month == 7:
+                        tm = re.search(r'(\d{1,2}):(\d{2})', time_label)
+                        links = cell.locator("a")
+                        if tm and links.count() == 1:
+                            start_at = (
+                                f"{slot_date.isoformat()} "
+                                f"{int(tm.group(1)):02d}:{int(tm.group(2)):02d}"
+                            )
+                            booking_candidates.append((start_at, slot_str, links.first))
+
+        if booking_candidates and auto_book and booking_config:
+            start_at, slot_str, slot_link = min(booking_candidates, key=lambda item: item[0])
+            print(f"[{target['name']}] 自動予約を開始: {slot_str}")
+            booking_result = complete_booking(page, slot_link, start_at, booking_config)
+            print(f"[{target['name']}] 自動予約結果: {booking_result.status}/{booking_result.code}")
+
         browser.close()
 
     # 重複除去・ソート
-    return sorted(set(available_slots))
+    return sorted(set(available_slots)), booking_result
 
 
 def _date_range(d_from: date, d_to: date):
@@ -235,23 +270,28 @@ def _date_range(d_from: date, d_to: date):
     return months
 
 
-def check_target(target: dict) -> list[str]:
+def check_target(
+    target: dict,
+    auto_book: bool = False,
+    booking_config: BookingConfig | None = None,
+) -> tuple[list[str], BookingResult | None]:
     today = date.today()
     if today > target["date_to"]:
         print(f"[{target['name']}] 監視期間終了")
-        return []
+        return [], None
 
     try:
-        result = check_via_browser(target)
+        result, booking_result = check_via_browser(target, auto_book, booking_config)
         print(f"[{target['name']}] 結果: {result}")
-        return result
+        return result, booking_result
     except Exception as e:
         print(f"[{target['name']}] エラー: {e}")
-        return []
+        return [], None
 
 
 # 通知済みの枠を記録するファイル（リポジトリ内に置きジョブ交代後も維持）
 SEEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "notified_slots.txt")
+AUTO_STATUS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auto_book_status.txt")
 
 
 def load_seen() -> set:
@@ -266,20 +306,46 @@ def load_seen() -> set:
         return set()
 
 
-def save_seen(seen: set):
-    """通知済み枠を保存。CI環境ではリポジトリにコミットして永続化する。"""
+def load_auto_status() -> set:
+    try:
+        with open(AUTO_STATUS_FILE, encoding="utf-8") as f:
+            return {
+                line for line in f.read().splitlines()
+                if line.strip() and not line.lstrip().startswith("#")
+            }
+    except FileNotFoundError:
+        return set()
+
+
+def target_auto_status(statuses: set, target_name: str) -> str | None:
+    for line in statuses:
+        if line.startswith(f"BOOKED|{target_name}|"):
+            return "BOOKED"
+        if line.startswith(f"DISABLED|{target_name}|"):
+            return "DISABLED"
+    return None
+
+
+def save_state(seen: set, auto_statuses: set) -> bool:
+    """通知・自動予約状態を保存し、CIではコミットして永続化する。"""
     with open(SEEN_FILE, "w", encoding="utf-8") as f:
         f.write("\n".join(sorted(seen)))
+    with open(AUTO_STATUS_FILE, "w", encoding="utf-8") as f:
+        f.write("# 個人情報・予約番号は保存しない\n")
+        if auto_statuses:
+            f.write("\n".join(sorted(auto_statuses)) + "\n")
 
     if not os.environ.get("GITHUB_ACTIONS"):
-        return
+        return True
     _git("config", "user.name", "kirby-bot")
     _git("config", "user.email", "bot@users.noreply.github.com")
-    _git("add", SEEN_FILE)
-    committed = _git("commit", "-m", "通知済み枠を更新")
-    if committed:
-        _git("pull", "--rebase", "--autostash")
-        _git("push")
+    _git("add", SEEN_FILE, AUTO_STATUS_FILE)
+    committed = _git("commit", "-m", "監視・自動予約状態を更新")
+    if not committed:
+        return False
+    if not _git("pull", "--rebase", "--autostash"):
+        return False
+    return _git("push")
 
 
 def _git(*args) -> bool:
@@ -293,15 +359,107 @@ def _git(*args) -> bool:
         return False
 
 
+def _display_start_at(start_at: str) -> str:
+    try:
+        dt = datetime.strptime(start_at, "%Y-%m-%d %H:%M")
+        return f"{dt.month}月{dt.day}日 {dt.strftime('%H:%M')}"
+    except ValueError:
+        return "対象枠"
+
+
+def disable_monitor_workflow() -> bool:
+    """予約成功・安全停止時に、将来の自動起動も止める。"""
+    token = os.environ.get("GITHUB_TOKEN", "")
+    repository = os.environ.get("GITHUB_REPOSITORY", "")
+    if not token or not repository:
+        return not os.environ.get("GITHUB_ACTIONS")
+    try:
+        response = requests.put(
+            f"https://api.github.com/repos/{repository}/actions/workflows/monitor.yml/disable",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            timeout=20,
+        )
+        return response.status_code == 204
+    except requests.RequestException:
+        return False
+
+
 def main():
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
     notifications = []
     seen = load_seen()
+    auto_statuses = load_auto_status()
     newly_notified = set()
+    auto_enabled = auto_book_is_enabled()
+    booking_config = load_auto_book_config() if auto_enabled else None
+    config_errors = validate_auto_book_config(booking_config) if booking_config else []
+    if auto_enabled and config_errors:
+        print("自動予約設定が未完成: " + ",".join(config_errors))
 
     for target in TARGETS:
-        available = check_target(target)
         key_prefix = target["name"]
+        saved_status = target_auto_status(auto_statuses, key_prefix)
+        if saved_status == "BOOKED":
+            print(f"[{key_prefix}] 自動予約済みのため監視終了")
+            continue
+
+        should_auto_book = (
+            auto_enabled
+            and not config_errors
+            and bool(target.get("auto_book_july_2026"))
+            and saved_status != "DISABLED"
+        )
+        available, booking_result = check_target(
+            target,
+            auto_book=should_auto_book,
+            booking_config=booking_config,
+        )
+
+        if booking_result and booking_result.status == "success":
+            booked_slot = _display_start_at(booking_result.start_at)
+            auto_statuses = {
+                line for line in auto_statuses
+                if not line.startswith((f"BOOKED|{key_prefix}|", f"DISABLED|{key_prefix}|"))
+            }
+            auto_statuses.add(f"BOOKED|{key_prefix}|{booking_result.start_at}")
+            seen |= {f"{key_prefix}:{slot}" for slot in available}
+            persisted = save_state(seen, auto_statuses)
+            disabled = disable_monitor_workflow()
+            warning = ""
+            if not persisted or not disabled:
+                warning = "\n⚠️ 自動停止の一部に失敗しました。追加予約防止の確認が必要です。"
+            send_line_message(
+                f"【カービィカフェ 自動予約完了】\n"
+                f"{key_prefix}\n✅ {booked_slot}\n"
+                f"人数: {target['people']}名\n"
+                f"予約確認メールもご確認ください。{warning}"
+            )
+            print(f"[{key_prefix}] 自動予約完了。以後の自動予約を停止")
+            return
+
+        if booking_result and booking_result.status == "error":
+            auto_statuses = {
+                line for line in auto_statuses
+                if not line.startswith(f"DISABLED|{key_prefix}|")
+            }
+            auto_statuses.add(f"DISABLED|{key_prefix}|{booking_result.code}")
+            persisted = save_state(seen, auto_statuses)
+            disabled = disable_monitor_workflow()
+            warning = ""
+            if not persisted or not disabled:
+                warning = "\n⚠️ ワークフロー停止状態をGitHubでご確認ください。"
+            send_line_message(
+                f"【カービィカフェ 自動予約を安全停止】\n"
+                f"{key_prefix}\n"
+                f"枠の確保後に予約完了できなかったため、自動予約を停止しました。\n"
+                f"手動でご確認ください。{warning}\n{target['booking_url']}"
+            )
+            print(f"[{key_prefix}] エラーのため自動予約を安全停止")
+            return
 
         # まだ一度も通知していない枠だけを新着とする（累積方式）
         new_slots = [s for s in available if f"{key_prefix}:{s}" not in seen]
@@ -325,7 +483,7 @@ def main():
     if notifications:
         send_line_message("\n\n---\n\n".join(notifications))
         # 通知した枠を記録に「追加」する（消さずに積み重ね）
-        save_seen(seen | newly_notified)
+        save_state(seen | newly_notified, auto_statuses)
         print("LINE通知送信完了")
     else:
         print(f"変化なし ({now_str})")

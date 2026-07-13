@@ -45,6 +45,8 @@ GitHub Actions（cronで1日4回、各ジョブが6時間弱ループ）
 | `.github/workflows/jal-monitor.yml` / `jal-test.yml` | JAL 本番／検証。 |
 | `.github/workflows/ana-monitor.yml` / `ana-test.yml` | ANA 本番／検証。 |
 | `notified_slots.txt` | カービィの通知済み枠（累積）。重複通知を防ぐ記録。 |
+| `kirby_auto_book.py` | カービィ7月分の自動予約フォーム入力・確定処理。 |
+| `auto_book_status.txt` | 自動予約の成功／安全停止状態。個人情報や予約番号は置かない。 |
 | `notified_slots_jal.txt` / `notified_slots_ana.txt` | JAL／ANAの通知済み枠。 |
 | `jal_health.txt` / `ana_health.txt` | 自己点検の状態（"ok" / "ng:日付"）。 |
 
@@ -82,6 +84,31 @@ TARGETS = [
 - **削除/解除:** その `{...}` を消す。
 
 **変更したら `notified_slots.txt` を空にリセット**（`: > notified_slots.txt`）。人数や日程が変わると通知済み記録の意味が変わるため。
+
+### カービィ7月分の自動予約
+
+`TARGETS` で `"auto_book_july_2026": True` の対象は、設定が揃った場合だけ、最初に見つけた日時の早い空き1枠を同じブラウザで確保し予約確定まで進める。**2026年7月以外はコード側でも拒否**する。
+
+個人情報はPublicリポジトリに書かず、以下の GitHub Actions Secrets に保存する。
+
+- `KIRBY_NAME_LAST` / `KIRBY_NAME_FIRST`: 姓／名
+- `KIRBY_KANA_LAST` / `KIRBY_KANA_FIRST`: セイ／メイ
+- `KIRBY_MOBILE`: 電話番号（数字のみ）
+- `KIRBY_EMAIL`: 予約確認メールアドレス
+
+以下は GitHub Actions Variables。すべて揃うまで自動予約は無効。
+
+- `KIRBY_PRIVACY_CONSENT=YES`: 予約画面の個人情報取扱いを本人が確認・同意済み
+- `KIRBY_AUTO_BOOK_ENABLED=true`: 最後に設定する有効化スイッチ
+
+安全策:
+
+- バースデーサービスは「希望しない」、案内メール受信はオフ、その他要望は空欄で予約する。
+- 予約成功時は `auto_book_status.txt` に `BOOKED` を記録し、同じ対象の監視・追加予約を止める。
+- 枠確保後にフォーム処理が失敗した場合は、可能なら枠を解放し、`DISABLED` を記録して自動予約を安全停止する。
+- 予約成功または安全停止時は `monitor.yml` 自体も無効化し、状態ファイルのpushに失敗しても再試行し続けない。
+- `test-once.yml` は常に `KIRBY_AUTO_BOOK_ENABLED=false` で、単発テストが実在枠を確保しない。
+- 本番は concurrency group で多重実行を防ぐ。
 
 ### JAL（`jal_monitor.py` 冒頭）
 `PEOPLE`（人数）、`COURSE_KEYWORD`（コース名の部分一致。`""`で全コース）、`MONTHS_AHEAD`。変更後は `notified_slots_jal.txt` を空にリセット。

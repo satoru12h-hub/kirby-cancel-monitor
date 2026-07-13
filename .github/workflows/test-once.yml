@@ -24,6 +24,8 @@ jobs:
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          # 単発テストでは実在枠を確保・予約しない。
+          KIRBY_AUTO_BOOK_ENABLED: "false"
         run: python monitor.py
 
       - name: スクリーンショット保存

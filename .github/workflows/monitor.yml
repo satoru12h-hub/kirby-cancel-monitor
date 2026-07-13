@@ -12,6 +12,11 @@ on:
 
 permissions:
   contents: write   # 通知済み枠ファイルをリポジトリにコミットするため
+  actions: write    # 予約成功・安全停止時に本ワークフローを無効化するため
+
+concurrency:
+  group: kirby-monitor-production
+  cancel-in-progress: false
 
 jobs:
   monitor:
@@ -34,6 +39,15 @@ jobs:
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+          KIRBY_AUTO_BOOK_ENABLED: ${{ vars.KIRBY_AUTO_BOOK_ENABLED }}
+          KIRBY_NAME_LAST: ${{ secrets.KIRBY_NAME_LAST }}
+          KIRBY_NAME_FIRST: ${{ secrets.KIRBY_NAME_FIRST }}
+          KIRBY_KANA_LAST: ${{ secrets.KIRBY_KANA_LAST }}
+          KIRBY_KANA_FIRST: ${{ secrets.KIRBY_KANA_FIRST }}
+          KIRBY_MOBILE: ${{ secrets.KIRBY_MOBILE }}
+          KIRBY_EMAIL: ${{ secrets.KIRBY_EMAIL }}
+          KIRBY_PRIVACY_CONSENT: ${{ vars.KIRBY_PRIVACY_CONSENT }}
         run: |
           END=$((SECONDS + 345 * 60))   # 5時間45分後まで
           while [ $SECONDS -lt $END ]; do
