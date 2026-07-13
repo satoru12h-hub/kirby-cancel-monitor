@@ -13,15 +13,6 @@ HEADERS = {
 
 TARGETS = [
     {
-        "name": "TOKYO 1名 7/13-14",
-        "reserve_url": "https://kirbycafe-reserve.com/guest/tokyo/reserve/",
-        "booking_url": "https://kirbycafe-reserve.com/guest/tokyo/",
-        "people": 1,
-        "date_from": date(2026, 7, 13),
-        "date_to":   date(2026, 7, 14),
-        # 時間帯指定なし（全時間帯が対象）
-    },
-    {
         "name": "TOKYO 2名 7/16-19",
         "reserve_url": "https://kirbycafe-reserve.com/guest/tokyo/reserve/",
         "booking_url": "https://kirbycafe-reserve.com/guest/tokyo/",
