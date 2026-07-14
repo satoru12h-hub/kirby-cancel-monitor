@@ -1,0 +1,71 @@
+name: カービィ8月監視 テスト（手動1回）
+
+on:
+  workflow_dispatch:
+    inputs:
+      send_test_line:
+        description: '監視開始のテスト用LINEを1通送る'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 依存関係インストール
+        run: |
+          pip install playwright requests
+          playwright install chromium --with-deps
+
+      - name: 稼働確認LINE送信（任意）
+        if: ${{ inputs.send_test_line }}
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          response = requests.post(
+              "https://api.line.me/v2/bot/message/push",
+              headers={
+                  "Authorization": f"Bearer {os.environ['LINE_CHANNEL_ACCESS_TOKEN']}",
+                  "Content-Type": "application/json",
+              },
+              json={
+                  "to": os.environ["LINE_USER_ID"],
+                  "messages": [{
+                      "type": "text",
+                      "text": "【カービィカフェ 8月監視】テスト通知です。TOKYO・2名・2026年8月の空きが出たらお知らせします。",
+                  }],
+              },
+              timeout=20,
+          )
+          print(f"LINE送信結果: {response.status_code} {response.text[:200]}")
+          response.raise_for_status()
+          PY
+
+      - name: 公開カレンダーを1回確認（予約操作なし）
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: python kirby_august_monitor.py
+
+      - name: スクリーンショット保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kirby-august-debug-screenshot
+          path: /tmp/kirby_august_debug.png
+          if-no-files-found: ignore

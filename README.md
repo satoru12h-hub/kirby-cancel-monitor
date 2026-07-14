@@ -10,7 +10,8 @@
 
 | 監視 | 本番ワークフロー | 状態 | 現在の設定 |
 |---|---|---|---|
-| カービィカフェ TOKYO | `monitor.yml` | ✅ 稼働 | 2名・7/16〜19（全時間帯） |
+| カービィカフェ TOKYO（旧7月ページ） | `monitor.yml` | ⏹️ 停止 | 2名・7/16〜19（全時間帯） |
+| カービィカフェ TOKYO（新予約サイト） | `kirby-august-monitor.yml` | ✅ 稼働 | 2名・2026年8月（全日・全時間帯） |
 | JAL工場見学 SKY MUSEUM | `jal-monitor.yml` | ✅ 稼働 | 4名・工場見学コース |
 | ANA工場見学 | `ana-monitor.yml` | ⏹️ 停止（**意図的**・触らない） | 4名 |
 
@@ -38,13 +39,16 @@ GitHub Actions（cronで1日4回、各ジョブが6時間弱ループ）
 | ファイル | 役割 |
 |---|---|
 | `monitor.py` | カービィカフェ本体。先頭の `TARGETS`（配列）に監視条件を書く。複数並行可。 |
+| `kirby_august_monitor.py` | 新予約サイトの公開カレンダーを使う2026年8月専用監視。TOKYO・2名・全日・全時間帯。予約操作はしない。 |
 | `jal_monitor.py` | JAL工場見学本体。先頭の `PEOPLE` / `COURSE_KEYWORD` / `MONTHS_AHEAD` で設定。 |
 | `ana_monitor.py` | ANA工場見学本体。先頭の `PEOPLE` / `MONTHS_AHEAD` で設定。 |
 | `.github/workflows/monitor.yml` | カービィ本番（cron＋内部ループ）。`sleep` の秒数がチェック間隔。 |
 | `.github/workflows/test-once.yml` | カービィを1回だけ実行する検証用（手動起動）。 |
+| `.github/workflows/kirby-august-monitor.yml` / `kirby-august-test.yml` | 新予約サイトの8月監視 本番／検証。 |
 | `.github/workflows/jal-monitor.yml` / `jal-test.yml` | JAL 本番／検証。 |
 | `.github/workflows/ana-monitor.yml` / `ana-test.yml` | ANA 本番／検証。 |
 | `notified_slots.txt` | カービィの通知済み枠（累積）。重複通知を防ぐ記録。 |
+| `notified_slots_kirby_august.txt` / `kirby_august_health.txt` | 新予約サイト8月監視の通知済み枠／自己点検状態。 |
 | `kirby_auto_book.py` | カービィ7月分の自動予約フォーム入力・確定処理。 |
 | `auto_book_status.txt` | 自動予約の成功／安全停止状態。個人情報や予約番号は置かない。 |
 | `notified_slots_jal.txt` / `notified_slots_ana.txt` | JAL／ANAの通知済み枠。 |
@@ -111,6 +115,12 @@ TARGETS = [
 - `test-once.yml` は常に `KIRBY_AUTO_BOOK_ENABLED=false` で、単発テストが実在枠を確保しない。
 - 本番は concurrency group で多重実行を防ぐ。
 
+### カービィ新予約サイト・2026年8月
+
+`kirby_august_monitor.py` はログイン不要の「予約空き状況のご案内（確認のみ）」で、人数を先に2名、店舗をTOKYOの順に選び、2026年8月へ移動して全日・全時間帯を確認する。公開カレンダー上の `○` だけを空きとしてLINE通知する。セルや予約ボタンはクリックしない。
+
+設定を変更する場合は、冒頭の `STORE` / `PEOPLE` / `TARGET_YEAR` / `TARGET_MONTH` を変更し、`notified_slots_kirby_august.txt` を空にする。対象月を変えるときはファイル名・通知文・ワークフロー名も整理する。
+
 ### JAL（`jal_monitor.py` 冒頭）
 `PEOPLE`（人数）、`COURSE_KEYWORD`（コース名の部分一致。`""`で全コース）、`MONTHS_AHEAD`。変更後は `notified_slots_jal.txt` を空にリセット。
 
@@ -150,6 +160,8 @@ gh workflow run monitor.yml
 
 JAL/ANAは `monitor.yml`→`jal-monitor.yml`/`ana-monitor.yml`、`test-once.yml`→`jal-test.yml`/`ana-test.yml` に読み替え。
 
+新予約サイトの8月監視は `kirby-august-monitor.yml` / `kirby-august-test.yml` を使う。旧7月用の `monitor.yml` は停止状態を維持する。
+
 ### 停止 / 再開
 ```bash
 # 停止（今後の自動起動も止める）
@@ -167,6 +179,8 @@ gh workflow run jal-monitor.yml
 
 - **カービィの空き判定:** 予約カレンダーのセルは `○`=空き（クリック可能な`<a>`付き）、`×`=満席、**空文字=対象外/過去**。「×以外」で拾うと過去セルを誤検出する。**必ず `○` で判定**すること。
 - **カービィの人数選択:** Vuetify の `v-select`（`.v-menu__content` にメニューが出る特殊なドロップダウン）。普通の `<select>` ではないので `select_option` では動かない。ドロップダウンを開いて「◯名様」を選ぶ実装になっている。
+- **新予約サイトの公開カレンダー:** `#NumberOfCustomers` と `#StoreSelection` はnative `<select>`。店舗変更時にその時点の人数でデータを取得するため、**人数→店舗の順**に選ぶ。旧ページとは操作方法が異なる。
+- **新予約サイトの空き判定:** 指定人数で空き数0は `×`、1以上はクリック可能な `○`、過去・対象外は空文字または `-`。ここでも**必ず `○` だけ**を拾う。
 - **カレンダーの月:** 初期表示が翌月になっていることがある。**スキャン前に表示中の年月を検証**し、違えば前月/次月ボタン（`chevron_left`/`chevron_right`）で移動している。誤って別月を読むと誤報になる。
 - **重複通知:** 通知済み枠を `notified_slots.txt` に**累積**（消さない・上書きしない）してコミット。これでジョブ交代後も維持され、同じ枠を二度通知しない。過去に「上書き方式」で、空きが一瞬消えて復活するたびに再通知してしまう不具合があった。
 - **無料枠:** private のままだとActions枠を食い潰してジョブが2秒で失敗する。**Public維持**が前提。エラーメール「recent account payments have failed...」が来たらこれ。
