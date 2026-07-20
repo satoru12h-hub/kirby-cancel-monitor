@@ -11,7 +11,7 @@
 | 監視 | 本番ワークフロー | 状態 | 現在の設定 |
 |---|---|---|---|
 | カービィカフェ TOKYO（旧7月ページ） | `monitor.yml` | ⏹️ 停止 | 2名・7/16〜19（全時間帯） |
-| カービィカフェ TOKYO（新予約サイト） | `kirby-august-monitor.yml` | ✅ 稼働 | 2名・2026年8月（全日・全時間帯） |
+| カービィカフェ TOKYO（新予約サイト） | `kirby-august-monitor.yml` | ✅ 稼働 | 4名・2026年8月14日〜15日（全時間帯） |
 | JAL工場見学 SKY MUSEUM | `jal-monitor.yml` | ✅ 稼働 | 4名・工場見学コース |
 | ANA工場見学 | `ana-monitor.yml` | ⏹️ 停止（**意図的**・触らない） | 4名 |
 
@@ -39,7 +39,7 @@ GitHub Actions（cronで1日4回、各ジョブが6時間弱ループ）
 | ファイル | 役割 |
 |---|---|
 | `monitor.py` | カービィカフェ本体。先頭の `TARGETS`（配列）に監視条件を書く。複数並行可。 |
-| `kirby_august_monitor.py` | 新予約サイトの公開カレンダーを使う2026年8月専用監視。TOKYO・2名・全日・全時間帯。予約操作はしない。 |
+| `kirby_august_monitor.py` | 新予約サイトの公開カレンダーを使う2026年8月専用監視。TOKYO・4名・8/14〜15・全時間帯。予約操作はしない。 |
 | `jal_monitor.py` | JAL工場見学本体。先頭の `PEOPLE` / `COURSE_KEYWORD` / `MONTHS_AHEAD` で設定。 |
 | `ana_monitor.py` | ANA工場見学本体。先頭の `PEOPLE` / `MONTHS_AHEAD` で設定。 |
 | `.github/workflows/monitor.yml` | カービィ本番（cron＋内部ループ）。`sleep` の秒数がチェック間隔。 |
@@ -117,9 +117,9 @@ TARGETS = [
 
 ### カービィ新予約サイト・2026年8月
 
-`kirby_august_monitor.py` はログイン不要の「予約空き状況のご案内（確認のみ）」で、人数を先に2名、店舗をTOKYOの順に選び、2026年8月へ移動して全日・全時間帯を確認する。公開カレンダー上の `○` だけを空きとしてLINE通知する。セルや予約ボタンはクリックしない。
+`kirby_august_monitor.py` はログイン不要の「予約空き状況のご案内（確認のみ）」で、人数を先に4名、店舗をTOKYOの順に選び、2026年8月へ移動して8月14日〜15日の全時間帯を確認する。公開カレンダー上の `○` だけを空きとしてLINE通知する。セルや予約ボタンはクリックしない。
 
-設定を変更する場合は、冒頭の `STORE` / `PEOPLE` / `TARGET_YEAR` / `TARGET_MONTH` を変更し、`notified_slots_kirby_august.txt` を空にする。対象月を変えるときはファイル名・通知文・ワークフロー名も整理する。
+設定を変更する場合は、冒頭の `STORE` / `PEOPLE` / `TARGET_YEAR` / `TARGET_MONTH` / `TARGET_DAYS` を変更し、`notified_slots_kirby_august.txt` を空にする。対象月を変えるときはファイル名・通知文・ワークフロー名も整理する。
 
 ### JAL（`jal_monitor.py` 冒頭）
 `PEOPLE`（人数）、`COURSE_KEYWORD`（コース名の部分一致。`""`で全コース）、`MONTHS_AHEAD`。変更後は `notified_slots_jal.txt` を空にリセット。

@@ -1,4 +1,4 @@
-"""カービィカフェTOKYOの2026年8月を2名で監視し、新しい空きをLINE通知する。"""
+"""カービィカフェTOKYOの2026年8月14・15日を4名で監視する。"""
 
 from __future__ import annotations
 
@@ -14,9 +14,10 @@ from playwright.sync_api import Page, sync_playwright
 CALENDAR_URL = "https://kirbycafe-reserve.com/user/auth/calendar"
 LOGIN_URL = "https://kirbycafe-reserve.com/user/auth/login"
 STORE = "TOKYO"
-PEOPLE = 2
+PEOPLE = 4
 TARGET_YEAR = 2026
 TARGET_MONTH = 8
+TARGET_DAYS = {14, 15}
 TARGET_YYYYMM = f"{TARGET_YEAR:04d}-{TARGET_MONTH:02d}"
 TARGET_MONTH_LABEL = f"{TARGET_YEAR}年{TARGET_MONTH:02d}月"
 
@@ -135,6 +136,8 @@ def _scan_visible_calendar(page: Page) -> list[str]:
             day = column_days.get(column_index)
             if day is None:
                 raise RuntimeError(f"空きセルの日付列を特定できません: {column_index}")
+            if day not in TARGET_DAYS:
+                continue
             slots.append(f"{TARGET_MONTH}月{day}日 {time_label}")
 
     print(f"セル内訳: {symbol_counts}")
@@ -270,7 +273,8 @@ def main() -> None:
     if not healthy:
         return
 
-    prefix = f"{STORE}:{PEOPLE}:2026-08"
+    day_range = "-".join(str(day) for day in sorted(TARGET_DAYS))
+    prefix = f"{STORE}:{PEOPLE}:{TARGET_YYYYMM}:{day_range}"
     new_slots = [slot for slot in available if f"{prefix}:{slot}" not in seen]
     if not new_slots:
         already_seen = len([slot for slot in available if f"{prefix}:{slot}" in seen])
@@ -278,7 +282,7 @@ def main() -> None:
         return
 
     message = (
-        "【カービィカフェ TOKYO・8月】\n"
+        "【カービィカフェ TOKYO・8月14日/15日】\n"
         f"{PEOPLE}名で予約できる空きが出ました！🎉\n\n"
         + "\n".join(f"✅ {slot}" for slot in new_slots[:20])
         + f"\n\nログインして予約してください。\n{LOGIN_URL}"
