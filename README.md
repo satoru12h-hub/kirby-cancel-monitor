@@ -12,7 +12,7 @@
 |---|---|---|---|
 | カービィカフェ TOKYO（旧7月ページ） | `monitor.yml` | ⏹️ 停止 | 2名・7/16〜19（全時間帯） |
 | カービィカフェ TOKYO（新予約サイト） | `kirby-august-monitor.yml` | ✅ 稼働 | 4名・2026年8月14日〜15日（全時間帯） |
-| JAL工場見学 SKY MUSEUM | `jal-monitor.yml` | ✅ 稼働 | 4名・工場見学コース |
+| JAL工場見学 SKY MUSEUM | `jal-monitor.yml` | ✅ 稼働 | 4名・工場見学コース・日本時間のちょうど30日後は除外 |
 | ANA工場見学 | `ana-monitor.yml` | ⏹️ 停止（**意図的**・触らない） | 4名 |
 
 設定変更はよく来る（人数・日程・時間帯・追加/削除・停止/再開）。オーナーは気軽に付け外しする。
@@ -122,7 +122,7 @@ TARGETS = [
 設定を変更する場合は、冒頭の `STORE` / `PEOPLE` / `TARGET_YEAR` / `TARGET_MONTH` / `TARGET_DAYS` を変更し、`notified_slots_kirby_august.txt` を空にする。対象月を変えるときはファイル名・通知文・ワークフロー名も整理する。
 
 ### JAL（`jal_monitor.py` 冒頭）
-`PEOPLE`（人数）、`COURSE_KEYWORD`（コース名の部分一致。`""`で全コース）、`MONTHS_AHEAD`。変更後は `notified_slots_jal.txt` を空にリセット。
+`PEOPLE`（人数）、`COURSE_KEYWORD`（コース名の部分一致。`""`で全コース）、`MONTHS_AHEAD`。`EXCLUDE_DAYS_AHEAD=30` により、日本時間の今日からちょうど30日後（予約開始直後の新規公開枠）は通知しない。翌日になって同じ日が29日後になれば、空きが続いている場合は通常の通知対象になる。人数・コース等を変更した場合は `notified_slots_jal.txt` を空にリセットする。
 
 ### ANA（`ana_monitor.py` 冒頭）
 `PEOPLE`、`MONTHS_AHEAD`。変更後は `notified_slots_ana.txt` を空にリセット。
@@ -184,7 +184,7 @@ gh workflow run jal-monitor.yml
 - **カレンダーの月:** 初期表示が翌月になっていることがある。**スキャン前に表示中の年月を検証**し、違えば前月/次月ボタン（`chevron_left`/`chevron_right`）で移動している。誤って別月を読むと誤報になる。
 - **重複通知:** 通知済み枠を `notified_slots.txt` に**累積**（消さない・上書きしない）してコミット。これでジョブ交代後も維持され、同じ枠を二度通知しない。過去に「上書き方式」で、空きが一瞬消えて復活するたびに再通知してしまう不具合があった。
 - **無料枠:** private のままだとActions枠を食い潰してジョブが2秒で失敗する。**Public維持**が前提。エラーメール「recent account payments have failed...」が来たらこれ。
-- **JAL:** 空き状況ページはパラメータ付きURLに直接アクセスするだけで取得可能（同意画面・フォーム不要）。`numberOfPeople` を渡すので、人数に満たない枠は自動で「予約可能数不足」表示になり拾わない。自己点検（カレンダー表が1つも取れない=異常）でLINEアラートを出す仕組みあり。
+- **JAL:** 空き状況ページはパラメータ付きURLに直接アクセスするだけで取得可能（同意画面・フォーム不要）。`numberOfPeople` を渡すので、人数に満たない枠は自動で「予約可能数不足」表示になり拾わない。日本時間基準でちょうど30日後の枠は、予約開始直後の通知を避けるため除外する。自己点検（カレンダー表が1つも取れない=異常）でLINEアラートを出す仕組みあり。
 
 ---
 

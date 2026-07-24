@@ -6,7 +6,9 @@
 import os
 import re
 import subprocess
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from typing import Optional
+from zoneinfo import ZoneInfo
 
 import requests
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -18,8 +20,11 @@ LINE_USER_ID = os.environ["LINE_USER_ID"]
 PEOPLE = 4                         # 何名分の空きを探すか
 COURSE_KEYWORD = "工場見学コース"   # 監視するコース名（部分一致）。""にすると全コース
 MONTHS_AHEAD = 1                   # 今月から何ヶ月先まで見るか（予約受付は1ヶ月先まで）
+EXCLUDE_DAYS_AHEAD = 30            # 予約開始直後にあたる「ちょうど30日後」は通知しない
 ENTRY_URL = "https://jalfactorytour.my.salesforce-sites.com/"  # 通知に載せる予約入口
 # ====================
+
+JST = ZoneInfo("Asia/Tokyo")
 
 BASE = ("https://jalfactorytour.my.salesforce-sites.com/rselectcourse"
         "?month={m}&numberOfPeople={p}&useWheelchair=%E4%B8%8D%E8%A6%81+Unnecessary&year={y}")
@@ -54,8 +59,25 @@ def cell_bookable(alts: list[str]) -> bool:
     return False
 
 
+def jst_today() -> date:
+    """GitHub ActionsのUTC時刻ではなく、日本時間の今日を返す。"""
+    return datetime.now(JST).date()
+
+
+def notification_open_date(today: Optional[date] = None) -> date:
+    """予約開始直後として通知対象外にする日付。"""
+    base = today or jst_today()
+    return base + timedelta(days=EXCLUDE_DAYS_AHEAD)
+
+
+def should_notify_date(slot_date: date, today: Optional[date] = None) -> bool:
+    """過去と、日本時間でちょうど30日後の枠を通知対象外にする。"""
+    base = today or jst_today()
+    return base <= slot_date and slot_date != notification_open_date(base)
+
+
 def _months_to_scan() -> list[tuple[int, int]]:
-    today = date.today()
+    today = jst_today()
     out = []
     y, m = today.year, today.month
     for _ in range(MONTHS_AHEAD + 1):
@@ -69,7 +91,7 @@ def _months_to_scan() -> list[tuple[int, int]]:
 
 def _infer_year(month: int) -> int:
     """日付ラベルの月から年を推定（年またぎ対応）。"""
-    today = date.today()
+    today = jst_today()
     if month >= today.month:
         return today.year
     return today.year + 1
@@ -124,7 +146,7 @@ def scan_month(page, y: int, m: int) -> list[tuple]:
                     slot_date = date(_infer_year(mo), mo, da)
                 except ValueError:
                     continue
-                if slot_date < date.today():
+                if not should_notify_date(slot_date):
                     continue
                 t = times[i] if i < len(times) else "?"
                 found.append((slot_date, course, t))
@@ -137,6 +159,7 @@ def check():
     どの月でもカレンダー表が1つも取れなければ healthy=False（異常）。"""
     slots = set()
     tables_seen = 0
+    print(f"通知対象外（予約開始直後）: {notification_open_date().isoformat()} / 日本時間の30日後")
     months = _months_to_scan()
     for (y, m) in months:
         # 月ごとに使い捨てブラウザ。1月失敗しても他月は続行
@@ -220,7 +243,7 @@ def _write_state(path: str, value: str):
 
 def report_health(healthy: bool):
     """異常検知時に1日1回だけアラート、復旧時に1回だけ復旧通知を出す。"""
-    today = date.today().isoformat()
+    today = jst_today().isoformat()
     prev = _read_state(HEALTH_FILE)
     if not healthy:
         # すでに今日アラート済みなら鳴らさない（3分ループでの連発防止）
@@ -244,7 +267,7 @@ def report_health(healthy: bool):
 
 
 def main():
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
+    now_str = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
     seen = load_seen()
     available, healthy = check()
     print(f"検出した予約可能枠: {available}")

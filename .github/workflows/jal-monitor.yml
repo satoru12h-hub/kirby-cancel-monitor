@@ -32,7 +32,7 @@ jobs:
           pip install playwright requests
           playwright install chromium --with-deps
 
-      - name: 空き確認ループ（3分おき・最大5時間45分）
+      - name: 4名の空き確認ループ（30日後を除外・3分おき）
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}

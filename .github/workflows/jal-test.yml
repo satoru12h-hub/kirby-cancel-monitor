@@ -41,7 +41,7 @@ jobs:
                        "Content-Type": "application/json"},
               json={"to": os.environ["LINE_USER_ID"],
                     "messages": [{"type": "text",
-                                  "text": "【JAL工場見学 監視】テスト通知です。監視を開始しました。4名の空きが出たらお知らせします。"}]},
+                                  "text": "【JAL工場見学 監視】テスト通知です。4名の空き（日本時間のちょうど30日後を除く）が出たらお知らせします。"}]},
           )
           print("test line sent")
           PY
