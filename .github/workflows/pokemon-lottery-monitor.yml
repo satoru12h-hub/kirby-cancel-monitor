@@ -1,0 +1,58 @@
+name: ポケモンセンターオンライン 抽選案内監視
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      send_test_line:
+        description: '設定完了のテストLINEを1通送る'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pokemon-lottery-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: テスト
+        run: python -m unittest -v test_pokemon_lottery_monitor.py
+
+      - name: 設定完了LINEを送信（手動実行時のみ）
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.send_test_line }}
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: python pokemon_lottery_monitor.py --send-test
+
+      - name: 新しい抽選案内を確認
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: python pokemon_lottery_monitor.py
+
+      - name: 確認済みのお知らせを保存
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pokemon_news_seen.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update checked Pokemon Center news"
+            git pull --rebase
+            git push
+          fi

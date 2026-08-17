@@ -42,17 +42,20 @@ GitHub Actions（cronで1日4回、各ジョブが6時間弱ループ）
 | `kirby_august_monitor.py` | 新予約サイトの公開カレンダーを使う2026年8月専用監視。TOKYO・4名・8/14〜15・全時間帯。予約操作はしない。 |
 | `jal_monitor.py` | JAL工場見学本体。先頭の `PEOPLE` / `COURSE_KEYWORD` / `MONTHS_AHEAD` で設定。 |
 | `ana_monitor.py` | ANA工場見学本体。先頭の `PEOPLE` / `MONTHS_AHEAD` で設定。 |
+| `pokemon_lottery_monitor.py` | ポケモンセンターオンラインの新しい抽選案内を15分おきに確認し、LINE通知する。 |
 | `.github/workflows/monitor.yml` | カービィ本番（cron＋内部ループ）。`sleep` の秒数がチェック間隔。 |
 | `.github/workflows/test-once.yml` | カービィを1回だけ実行する検証用（手動起動）。 |
 | `.github/workflows/kirby-august-monitor.yml` / `kirby-august-test.yml` | 新予約サイトの8月監視 本番／検証。 |
 | `.github/workflows/jal-monitor.yml` / `jal-test.yml` | JAL 本番／検証。 |
 | `.github/workflows/ana-monitor.yml` / `ana-test.yml` | ANA 本番／検証。 |
+| `.github/workflows/pokemon-lottery-monitor.yml` | ポケモンセンターオンライン抽選案内の監視（15分おき／手動テスト対応）。 |
 | `notified_slots.txt` | カービィの通知済み枠（累積）。重複通知を防ぐ記録。 |
 | `notified_slots_kirby_august.txt` / `kirby_august_health.txt` | 新予約サイト8月監視の通知済み枠／自己点検状態。 |
 | `kirby_auto_book.py` | カービィ7月分の自動予約フォーム入力・確定処理。 |
 | `auto_book_status.txt` | 自動予約の成功／安全停止状態。個人情報や予約番号は置かない。 |
 | `notified_slots_jal.txt` / `notified_slots_ana.txt` | JAL／ANAの通知済み枠。 |
 | `jal_health.txt` / `ana_health.txt` | 自己点検の状態（"ok" / "ng:日付"）。 |
+| `pokemon_news_seen.txt` | 確認済みのポケモンセンターオンラインお知らせID。 |
 
 ---
 
