@@ -42,7 +42,7 @@ GitHub Actions（cronで1日4回、各ジョブが6時間弱ループ）
 | `kirby_august_monitor.py` | 新予約サイトの公開カレンダーを使う2026年8月専用監視。TOKYO・4名・8/14〜15・全時間帯。予約操作はしない。 |
 | `jal_monitor.py` | JAL工場見学本体。先頭の `PEOPLE` / `COURSE_KEYWORD` / `MONTHS_AHEAD` で設定。 |
 | `ana_monitor.py` | ANA工場見学本体。先頭の `PEOPLE` / `MONTHS_AHEAD` で設定。 |
-| `pokemon_lottery_monitor.py` | ポケモンセンターオンラインの新しい抽選案内を15分おきに確認し、LINE通知する。 |
+| `pokemon_lottery_monitor.py` | ポケモンセンターオンラインの新しい抽選案内を15分おきに確認し、案内時と応募開始約1時間後にLINE通知する。 |
 | `.github/workflows/monitor.yml` | カービィ本番（cron＋内部ループ）。`sleep` の秒数がチェック間隔。 |
 | `.github/workflows/test-once.yml` | カービィを1回だけ実行する検証用（手動起動）。 |
 | `.github/workflows/kirby-august-monitor.yml` / `kirby-august-test.yml` | 新予約サイトの8月監視 本番／検証。 |
@@ -56,6 +56,7 @@ GitHub Actions（cronで1日4回、各ジョブが6時間弱ループ）
 | `notified_slots_jal.txt` / `notified_slots_ana.txt` | JAL／ANAの通知済み枠。 |
 | `jal_health.txt` / `ana_health.txt` | 自己点検の状態（"ok" / "ng:日付"）。 |
 | `pokemon_news_seen.txt` | 確認済みのポケモンセンターオンラインお知らせID。 |
+| `pokemon_lottery_reminders.json` | 抽選応募開始約1時間後に送るLINEリマインダーの状態。 |
 
 ---
 

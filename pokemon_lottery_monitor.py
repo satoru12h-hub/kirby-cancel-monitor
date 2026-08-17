@@ -7,16 +7,20 @@ import html
 import json
 import os
 import re
+from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urljoin, urlparse
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 
 HOME_URL = "https://www.pokemoncenter-online.com/"
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 STATE_PATH = Path(__file__).with_name("pokemon_news_seen.txt")
+REMINDER_PATH = Path(__file__).with_name("pokemon_lottery_reminders.json")
+JST = ZoneInfo("Asia/Tokyo")
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
@@ -124,11 +128,30 @@ def extract_main_text(page_html: str) -> str:
     return parser.text
 
 
-def is_lottery_announcement(item: dict[str, str]) -> bool:
-    if "抽選" in item["title"]:
-        return True
-    detail_html = fetch_text(item["url"])
-    return "抽選" in extract_main_text(detail_html)
+def is_lottery_announcement(item: dict[str, str], detail_html: str) -> bool:
+    return "抽選" in item["title"] or "抽選" in extract_main_text(detail_html)
+
+
+def extract_application_starts(page_html: str) -> list[datetime]:
+    """ニュース本文から抽選応募受付の開始日時を抽出する。"""
+    text = extract_main_text(page_html)
+    announcement_match = re.search(r"(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日", text)
+    if not announcement_match:
+        return []
+    announcement_year = int(announcement_match.group(1))
+    announcement_month = int(announcement_match.group(2))
+
+    starts: list[datetime] = []
+    pattern = re.compile(
+        r"抽選応募受付期間\s*[：:]?\s*"
+        r"(\d{1,2})月\s*(\d{1,2})日(?:（[^）]*）|\([^)]*\))?\s*"
+        r"(\d{1,2})時\s*(\d{2})分"
+    )
+    for match in pattern.finditer(text):
+        month, day, hour, minute = map(int, match.groups())
+        year = announcement_year + (1 if month < announcement_month else 0)
+        starts.append(datetime(year, month, day, hour, minute, tzinfo=JST))
+    return starts
 
 
 def load_seen() -> set[str]:
@@ -143,6 +166,79 @@ def load_seen() -> set[str]:
 
 def save_seen(seen: set[str]) -> None:
     STATE_PATH.write_text("".join(f"{news_id}\n" for news_id in sorted(seen, reverse=True)), encoding="utf-8")
+
+
+def load_reminders() -> dict[str, dict[str, str | bool]]:
+    if not REMINDER_PATH.exists():
+        return {}
+    data = json.loads(REMINDER_PATH.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise RuntimeError("リマインダー状態ファイルの形式が不正です")
+    return data
+
+
+def save_reminders(reminders: dict[str, dict[str, str | bool]]) -> None:
+    REMINDER_PATH.write_text(
+        json.dumps(reminders, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def add_application_reminders(
+    item: dict[str, str],
+    detail_html: str,
+    reminders: dict[str, dict[str, str | bool]],
+    now: datetime | None = None,
+) -> int:
+    """応募開始1時間後の未来の通知を登録する。"""
+    current = now or datetime.now(JST)
+    added = 0
+    for start_at in extract_application_starts(detail_html):
+        notify_at = start_at + timedelta(hours=1)
+        reminder_id = f"{item['id']}:{start_at.isoformat()}"
+        if notify_at <= current or reminder_id in reminders:
+            continue
+        reminders[reminder_id] = {
+            "news_id": item["id"],
+            "title": item["title"],
+            "url": item["url"],
+            "start_at": start_at.isoformat(),
+            "notify_at": notify_at.isoformat(),
+            "sent": False,
+        }
+        added += 1
+    return added
+
+
+def format_japanese_datetime(value: datetime) -> str:
+    return f"{value.year}年{value.month}月{value.day}日 {value.hour:02d}:{value.minute:02d}"
+
+
+def send_due_reminders(
+    reminders: dict[str, dict[str, str | bool]],
+    now: datetime | None = None,
+) -> int:
+    current = now or datetime.now(JST)
+    sent = 0
+    for reminder in reminders.values():
+        if reminder.get("sent"):
+            continue
+        notify_at = datetime.fromisoformat(str(reminder["notify_at"]))
+        if notify_at > current:
+            continue
+        start_at = datetime.fromisoformat(str(reminder["start_at"]))
+        send_line_message(
+            "【ポケモンセンターオンライン 応募リマインド】\n"
+            f"{reminder['title']}\n"
+            "抽選応募の受付開始から約1時間経ちました。\n"
+            f"応募開始: {format_japanese_datetime(start_at)}\n"
+            f"{reminder['url']}"
+        )
+        reminder["sent"] = True
+        sent += 1
+        save_reminders(reminders)
+        print(f"応募開始1時間後のリマインドを通知: {reminder['news_id']} {start_at.isoformat()}")
+    return sent
 
 
 def send_line_message(text: str) -> None:
@@ -181,6 +277,20 @@ def initialize() -> None:
     print(f"初期化完了: 現在のお知らせ {len(items)} 件を既知として登録")
 
 
+def sync_current_reminders() -> None:
+    """現在掲載中の抽選案内から未来の応募リマインダーを登録する。"""
+    items = parse_news_links(fetch_text(HOME_URL))
+    reminders = load_reminders()
+    added = 0
+    for item in items:
+        if "抽選" not in item["title"]:
+            continue
+        detail_html = fetch_text(item["url"])
+        added += add_application_reminders(item, detail_html, reminders)
+    save_reminders(reminders)
+    print(f"現在の抽選案内を同期: リマインダー {added} 件を追加")
+
+
 def monitor_once() -> None:
     items = parse_news_links(fetch_text(HOME_URL))
     if not items:
@@ -190,13 +300,18 @@ def monitor_once() -> None:
     if not seen:
         raise RuntimeError("状態ファイルが未初期化です。--initialize を一度実行してください")
 
+    reminders = load_reminders()
     new_items = [item for item in items if item["id"] not in seen]
     if not new_items:
         print("新しいお知らせはありません")
-        return
 
     for item in reversed(new_items):
-        if is_lottery_announcement(item):
+        detail_html = fetch_text(item["url"])
+        if is_lottery_announcement(item, detail_html):
+            added = add_application_reminders(item, detail_html, reminders)
+            if added:
+                save_reminders(reminders)
+                print(f"応募開始1時間後のリマインダーを登録: {added} 件")
             message = (
                 "【ポケモンセンターオンライン 抽選案内】\n"
                 f"{item['title']}\n"
@@ -209,15 +324,20 @@ def monitor_once() -> None:
         seen.add(item["id"])
         save_seen(seen)
 
+    send_due_reminders(reminders)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--initialize", action="store_true", help="現在のお知らせを通知せず既知として登録")
+    parser.add_argument("--sync-reminders", action="store_true", help="現在の抽選案内から未来のリマインダーを登録")
     parser.add_argument("--send-test", action="store_true", help="LINEへテスト通知を送信")
     args = parser.parse_args()
 
     if args.initialize:
         initialize()
+    elif args.sync_reminders:
+        sync_current_reminders()
     elif args.send_test:
         send_line_message(
             "【ポケモンセンターオンライン 抽選監視】\n"
