@@ -1,12 +1,18 @@
 import unittest
 from datetime import datetime
+from email.message import Message
+from unittest.mock import patch
+from urllib.error import HTTPError
 from zoneinfo import ZoneInfo
 
 from pokemon_lottery_monitor import (
     add_application_reminders,
     extract_application_starts,
     extract_main_text,
+    fetch_text,
+    monitor_once,
     parse_news_links,
+    WaitingRoomActive,
 )
 
 
@@ -78,6 +84,40 @@ class PokemonLotteryMonitorTest(unittest.TestCase):
         self.assertEqual(reminder["start_at"], "2026-08-28T12:00:00+09:00")
         self.assertEqual(reminder["notify_at"], "2026-08-28T13:00:00+09:00")
         self.assertFalse(reminder["sent"])
+
+    def test_waiting_room_redirect_has_a_distinct_status(self):
+        headers = Message()
+        headers["Location"] = "https://www.pokemoncenter-online.com/?queueittoken=e_event"
+        error = HTTPError(
+            "https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site",
+            301,
+            "Moved Permanently",
+            headers,
+            None,
+        )
+        with patch("pokemon_lottery_monitor.urlopen", side_effect=error):
+            with self.assertRaises(WaitingRoomActive):
+                fetch_text("https://www.pokemoncenter-online.com/")
+
+    def test_due_reminders_run_before_waiting_room_check(self):
+        call_order = []
+
+        def send_reminders(reminders):
+            call_order.append("reminders")
+            return 0
+
+        def waiting_room(url):
+            call_order.append("site")
+            raise WaitingRoomActive("waiting")
+
+        with (
+            patch("pokemon_lottery_monitor.load_reminders", return_value={}),
+            patch("pokemon_lottery_monitor.send_due_reminders", side_effect=send_reminders),
+            patch("pokemon_lottery_monitor.fetch_text", side_effect=waiting_room),
+        ):
+            monitor_once()
+
+        self.assertEqual(call_order, ["reminders", "site"])
 
 
 if __name__ == "__main__":

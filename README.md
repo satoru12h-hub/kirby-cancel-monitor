@@ -42,7 +42,7 @@ GitHub Actions（cronで1日4回、各ジョブが6時間弱ループ）
 | `kirby_august_monitor.py` | 新予約サイトの公開カレンダーを使う2026年8月専用監視。TOKYO・4名・8/14〜15・全時間帯。予約操作はしない。 |
 | `jal_monitor.py` | JAL工場見学本体。先頭の `PEOPLE` / `COURSE_KEYWORD` / `MONTHS_AHEAD` で設定。 |
 | `ana_monitor.py` | ANA工場見学本体。先頭の `PEOPLE` / `MONTHS_AHEAD` で設定。 |
-| `pokemon_lottery_monitor.py` | ポケモンセンターオンラインの新しい抽選案内を15分おきに確認し、案内時と応募開始約1時間後にLINE通知する。 |
+| `pokemon_lottery_monitor.py` | ポケモンセンターオンラインの新しい抽選案内を15分おきに確認し、案内時と応募開始約1時間後にLINE通知する。待合室表示中は正常な一時状態として次回に再確認する。 |
 | `.github/workflows/monitor.yml` | カービィ本番（cron＋内部ループ）。`sleep` の秒数がチェック間隔。 |
 | `.github/workflows/test-once.yml` | カービィを1回だけ実行する検証用（手動起動）。 |
 | `.github/workflows/kirby-august-monitor.yml` / `kirby-august-test.yml` | 新予約サイトの8月監視 本番／検証。 |

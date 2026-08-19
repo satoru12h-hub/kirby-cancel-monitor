@@ -27,6 +27,19 @@ USER_AGENT = (
 )
 
 
+class WaitingRoomActive(RuntimeError):
+    """ポケモンセンターオンラインのアクセス待合室が有効。"""
+
+
+def is_waiting_room_redirect(exc: HTTPError) -> bool:
+    location = exc.headers.get("Location", "") if exc.headers else ""
+    request_url = str(getattr(exc, "filename", "") or "")
+    return any(
+        marker in location or marker in request_url
+        for marker in ("wr.pokemoncenter-online.com", "queueittoken=")
+    )
+
+
 class NewsLinkParser(HTMLParser):
     """トップページ内の /news/?id=... リンクを抽出する。"""
 
@@ -109,7 +122,11 @@ def fetch_text(url: str, timeout: int = 30) -> str:
         with urlopen(request, timeout=timeout) as response:
             charset = response.headers.get_content_charset() or "utf-8"
             return response.read().decode(charset, errors="replace")
-    except (HTTPError, URLError, TimeoutError) as exc:
+    except HTTPError as exc:
+        if is_waiting_room_redirect(exc):
+            raise WaitingRoomActive("ポケモンセンターオンラインの待合室が有効です") from exc
+        raise RuntimeError(f"取得に失敗しました: {url} ({exc})") from exc
+    except (URLError, TimeoutError) as exc:
         raise RuntimeError(f"取得に失敗しました: {url} ({exc})") from exc
 
 
@@ -292,39 +309,43 @@ def sync_current_reminders() -> None:
 
 
 def monitor_once() -> None:
-    items = parse_news_links(fetch_text(HOME_URL))
-    if not items:
-        raise RuntimeError("お知らせリンクを1件も取得できませんでした")
-
-    seen = load_seen()
-    if not seen:
-        raise RuntimeError("状態ファイルが未初期化です。--initialize を一度実行してください")
-
+    # 登録済みリマインダーはサイトの待合室や障害に影響されないよう最初に送る。
     reminders = load_reminders()
-    new_items = [item for item in items if item["id"] not in seen]
-    if not new_items:
-        print("新しいお知らせはありません")
-
-    for item in reversed(new_items):
-        detail_html = fetch_text(item["url"])
-        if is_lottery_announcement(item, detail_html):
-            added = add_application_reminders(item, detail_html, reminders)
-            if added:
-                save_reminders(reminders)
-                print(f"応募開始1時間後のリマインダーを登録: {added} 件")
-            message = (
-                "【ポケモンセンターオンライン 抽選案内】\n"
-                f"{item['title']}\n"
-                f"{item['url']}"
-            )
-            send_line_message(message)
-            print(f"抽選案内を通知: {item['id']} {item['title']}")
-        else:
-            print(f"抽選以外のお知らせを確認: {item['id']} {item['title']}")
-        seen.add(item["id"])
-        save_seen(seen)
-
     send_due_reminders(reminders)
+
+    try:
+        items = parse_news_links(fetch_text(HOME_URL))
+        if not items:
+            raise RuntimeError("お知らせリンクを1件も取得できませんでした")
+
+        seen = load_seen()
+        if not seen:
+            raise RuntimeError("状態ファイルが未初期化です。--initialize を一度実行してください")
+
+        new_items = [item for item in items if item["id"] not in seen]
+        if not new_items:
+            print("新しいお知らせはありません")
+
+        for item in reversed(new_items):
+            detail_html = fetch_text(item["url"])
+            if is_lottery_announcement(item, detail_html):
+                added = add_application_reminders(item, detail_html, reminders)
+                if added:
+                    save_reminders(reminders)
+                    print(f"応募開始1時間後のリマインダーを登録: {added} 件")
+                message = (
+                    "【ポケモンセンターオンライン 抽選案内】\n"
+                    f"{item['title']}\n"
+                    f"{item['url']}"
+                )
+                send_line_message(message)
+                print(f"抽選案内を通知: {item['id']} {item['title']}")
+            else:
+                print(f"抽選以外のお知らせを確認: {item['id']} {item['title']}")
+            seen.add(item["id"])
+            save_seen(seen)
+    except WaitingRoomActive:
+        print("待合室が有効なためサイト確認を一時見送りました。次回の定期実行で再確認します")
 
 
 def main() -> None:
