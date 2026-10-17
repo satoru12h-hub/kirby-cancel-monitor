@@ -1,4 +1,4 @@
-name: カービィ8月監視 テスト（手動1回）
+name: カービィ11月監視 テスト（手動1回）
 
 on:
   workflow_dispatch:
@@ -47,7 +47,7 @@ jobs:
                   "to": os.environ["LINE_USER_ID"],
                   "messages": [{
                       "type": "text",
-                      "text": "【カービィカフェ 8月監視】テスト通知です。TOKYO・4名・2026年8月14日/15日の空きが出たらお知らせします。",
+                      "text": "【カービィカフェ 11月監視】テスト通知です。TOKYO・3名・2026年11月22日〜29日の空きが出たらお知らせします。",
                   }],
               },
               timeout=20,
@@ -66,6 +66,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kirby-august-debug-screenshot
+          name: kirby-november-debug-screenshot
           path: /tmp/kirby_august_debug.png
           if-no-files-found: ignore

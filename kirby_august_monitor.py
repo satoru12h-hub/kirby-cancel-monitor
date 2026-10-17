@@ -1,10 +1,11 @@
-"""カービィカフェTOKYOの2026年8月14・15日を4名で監視する。"""
+"""カービィカフェTOKYOの2026年11月22〜29日を3名で監視する。"""
 
 from __future__ import annotations
 
 import os
 import re
 import subprocess
+from calendar import monthrange
 from datetime import date, datetime
 
 import requests
@@ -14,10 +15,10 @@ from playwright.sync_api import Page, sync_playwright
 CALENDAR_URL = "https://kirbycafe-reserve.com/user/auth/calendar"
 LOGIN_URL = "https://kirbycafe-reserve.com/user/auth/login"
 STORE = "TOKYO"
-PEOPLE = 4
+PEOPLE = 3
 TARGET_YEAR = 2026
-TARGET_MONTH = 8
-TARGET_DAYS = {14, 15}
+TARGET_MONTH = 11
+TARGET_DAYS = set(range(22, 30))
 TARGET_YYYYMM = f"{TARGET_YEAR:04d}-{TARGET_MONTH:02d}"
 TARGET_MONTH_LABEL = f"{TARGET_YEAR}年{TARGET_MONTH:02d}月"
 
@@ -153,7 +154,8 @@ def _slot_sort_key(slot: str) -> tuple[int, int, int]:
 
 def check() -> tuple[list[str], bool]:
     """空き枠と自己点検結果を返す。予約ボタンは一切クリックしない。"""
-    if date.today() > date(TARGET_YEAR, TARGET_MONTH, 31):
+    last_day = monthrange(TARGET_YEAR, TARGET_MONTH)[1]
+    if date.today() > date(TARGET_YEAR, TARGET_MONTH, last_day):
         print("監視対象月が終了しています")
         return [], True
 
@@ -219,7 +221,7 @@ def _read_text(path: str) -> str:
 def _commit_state(paths: list[str], message: str) -> None:
     if not os.environ.get("GITHUB_ACTIONS"):
         return
-    _git("config", "user.name", "kirby-august-bot")
+    _git("config", "user.name", "kirby-monitor-bot")
     _git("config", "user.email", "bot@users.noreply.github.com")
     _git("add", *paths)
     if _git("commit", "-m", message):
@@ -238,7 +240,7 @@ def save_seen(seen: set[str]) -> None:
         file.write("\n".join(sorted(seen)))
         if seen:
             file.write("\n")
-    _commit_state([os.path.basename(SEEN_FILE)], "カービィ8月通知済み枠を更新")
+    _commit_state([os.path.basename(SEEN_FILE)], "カービィ通知済み枠を更新")
 
 
 def report_health(healthy: bool) -> None:
@@ -249,20 +251,20 @@ def report_health(healthy: bool) -> None:
             print("異常継続中（本日アラート済み）")
             return
         send_line_message(
-            "⚠️【カービィカフェ 8月監視】\n"
+            "⚠️【カービィカフェ 11月監視】\n"
             "公開カレンダーを正常に読み取れませんでした。\n"
             "サイト変更や一時的な通信障害の可能性があります。自動で再試行します。"
         )
         state = f"ng:{today}"
     else:
         if previous.startswith("ng:"):
-            send_line_message("✅【カービィカフェ 8月監視】読み取りが復旧しました。監視を継続します。")
+            send_line_message("✅【カービィカフェ 11月監視】読み取りが復旧しました。監視を継続します。")
         state = "ok"
 
     if state != previous:
         with open(HEALTH_FILE, "w", encoding="utf-8") as file:
             file.write(state + "\n")
-        _commit_state([os.path.basename(HEALTH_FILE)], "カービィ8月自己点検の状態を更新")
+        _commit_state([os.path.basename(HEALTH_FILE)], "カービィ自己点検の状態を更新")
 
 
 def main() -> None:
@@ -282,7 +284,7 @@ def main() -> None:
         return
 
     message = (
-        "【カービィカフェ TOKYO・8月14日/15日】\n"
+        "【カービィカフェ TOKYO・11月22日〜29日】\n"
         f"{PEOPLE}名で予約できる空きが出ました！🎉\n\n"
         + "\n".join(f"✅ {slot}" for slot in new_slots[:20])
         + f"\n\nログインして予約してください。\n{LOGIN_URL}"
