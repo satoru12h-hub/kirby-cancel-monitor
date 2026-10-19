@@ -1,4 +1,4 @@
-"""カービィカフェTOKYOの2026年11月22〜29日を3名で監視する。"""
+"""カービィカフェTOKYOの2026年11月16〜18日を2名で監視する。"""
 
 from __future__ import annotations
 
@@ -15,10 +15,14 @@ from playwright.sync_api import Page, sync_playwright
 CALENDAR_URL = "https://kirbycafe-reserve.com/user/auth/calendar"
 LOGIN_URL = "https://kirbycafe-reserve.com/user/auth/login"
 STORE = "TOKYO"
-PEOPLE = 3
+PEOPLE = 2
 TARGET_YEAR = 2026
 TARGET_MONTH = 11
-TARGET_DAYS = set(range(22, 30))
+TARGET_DAYS = {16, 17, 18}
+# 日ごとの開始時刻フィルター（分）。未指定日は全時間帯。
+TARGET_TIME_WINDOWS = {
+    16: (16 * 60 + 30, 17 * 60 + 30),
+}
 TARGET_YYYYMM = f"{TARGET_YEAR:04d}-{TARGET_MONTH:02d}"
 TARGET_MONTH_LABEL = f"{TARGET_YEAR}年{TARGET_MONTH:02d}月"
 
@@ -119,8 +123,10 @@ def _scan_visible_calendar(page: Page) -> list[str]:
                 f"カレンダーの列数が不正です: {cells.count()}列 / 日付={len(column_days)}列"
             )
         time_label = cells.nth(0).inner_text().strip()
-        if not re.fullmatch(r"\d{1,2}:\d{2}", time_label):
+        time_match = re.fullmatch(r"(\d{1,2}):(\d{2})", time_label)
+        if not time_match:
             raise RuntimeError(f"時間帯を読み取れません: {time_label!r}")
+        time_minutes = int(time_match.group(1)) * 60 + int(time_match.group(2))
 
         for column_index in range(1, cells.count()):
             symbol = cells.nth(column_index).inner_text().strip()
@@ -138,6 +144,9 @@ def _scan_visible_calendar(page: Page) -> list[str]:
             if day is None:
                 raise RuntimeError(f"空きセルの日付列を特定できません: {column_index}")
             if day not in TARGET_DAYS:
+                continue
+            time_window = TARGET_TIME_WINDOWS.get(day)
+            if time_window and not (time_window[0] <= time_minutes <= time_window[1]):
                 continue
             slots.append(f"{TARGET_MONTH}月{day}日 {time_label}")
 
@@ -284,8 +293,10 @@ def main() -> None:
         return
 
     message = (
-        "【カービィカフェ TOKYO・11月22日〜29日】\n"
+        "【カービィカフェ TOKYO・11月16日〜18日】\n"
         f"{PEOPLE}名で予約できる空きが出ました！🎉\n\n"
+        "最優先: 11月16日 16:30〜17:30\n"
+        "その他: 11月17日・18日 全時間帯\n\n"
         + "\n".join(f"✅ {slot}" for slot in new_slots[:20])
         + f"\n\nログインして予約してください。\n{LOGIN_URL}"
     )
