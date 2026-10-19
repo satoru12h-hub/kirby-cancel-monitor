@@ -11,7 +11,7 @@
 | 監視 | 本番ワークフロー | 状態 | 現在の設定 |
 |---|---|---|---|
 | カービィカフェ TOKYO（旧7月ページ） | `monitor.yml` | ⏹️ 停止 | 2名・7/16〜19（全時間帯） |
-| カービィカフェ TOKYO（新予約サイト） | `kirby-august-monitor.yml` | ✅ 稼働 | 2名・2026年11月16日 16:30〜17:30（最優先）、11月17日・18日（全時間帯） |
+| カービィカフェ TOKYO（新予約サイト） | `kirby-august-monitor.yml` | ✅ 稼働 | ①2名・2026年11月16日 16:30〜17:30（最優先）、11月17日・18日（全時間帯） ②3名・11月22日〜29日（全時間帯） |
 | JAL工場見学 SKY MUSEUM | `jal-monitor.yml` | ⏹️ 停止 | 4名・工場見学コース・日本時間のちょうど30日後は除外 |
 | ANA工場見学 | `ana-monitor.yml` | ⏹️ 停止（**意図的**・触らない） | 4名 |
 
@@ -39,18 +39,18 @@ GitHub Actions（cronで1日4回、各ジョブが6時間弱ループ）
 | ファイル | 役割 |
 |---|---|
 | `monitor.py` | カービィカフェ本体。先頭の `TARGETS`（配列）に監視条件を書く。複数並行可。 |
-| `kirby_august_monitor.py` | 新予約サイトの公開カレンダーを使う監視。現在はTOKYO・2名・2026年11/16 16:30〜17:30、11/17〜18全時間帯。予約操作はしない。 |
+| `kirby_august_monitor.py` | 新予約サイトの公開カレンダーを使う監視。現在はTOKYOの2条件（2名・11/16〜18、3名・11/22〜29）。予約操作はしない。 |
 | `jal_monitor.py` | JAL工場見学本体。先頭の `PEOPLE` / `COURSE_KEYWORD` / `MONTHS_AHEAD` で設定。 |
 | `ana_monitor.py` | ANA工場見学本体。先頭の `PEOPLE` / `MONTHS_AHEAD` で設定。 |
 | `pokemon_lottery_monitor.py` | ポケモンセンターオンラインの新しい抽選案内を15分おきに確認し、案内時と応募開始約1時間後にLINE通知する。待合室表示中は正常な一時状態として次回に再確認する。 |
 | `.github/workflows/monitor.yml` | カービィ本番（cron＋内部ループ）。`sleep` の秒数がチェック間隔。 |
 | `.github/workflows/test-once.yml` | カービィを1回だけ実行する検証用（手動起動）。 |
-| `.github/workflows/kirby-august-monitor.yml` / `kirby-august-test.yml` | 新予約サイトの8月監視 本番／検証。 |
+| `.github/workflows/kirby-august-monitor.yml` / `kirby-august-test.yml` | 新予約サイトの監視 本番／検証（ファイル名は互換性のため旧称のまま）。 |
 | `.github/workflows/jal-monitor.yml` / `jal-test.yml` | JAL 本番／検証。 |
 | `.github/workflows/ana-monitor.yml` / `ana-test.yml` | ANA 本番／検証。 |
 | `.github/workflows/pokemon-lottery-monitor.yml` | ポケモンセンターオンライン抽選案内の監視（15分おき／手動テスト対応）。 |
 | `notified_slots.txt` | カービィの通知済み枠（累積）。重複通知を防ぐ記録。 |
-| `notified_slots_kirby_august.txt` / `kirby_august_health.txt` | 新予約サイト8月監視の通知済み枠／自己点検状態。 |
+| `notified_slots_kirby_august.txt` / `kirby_august_health.txt` | 新予約サイト監視の通知済み枠／自己点検状態。 |
 | `kirby_auto_book.py` | カービィ7月分の自動予約フォーム入力・確定処理。 |
 | `auto_book_status.txt` | 自動予約の成功／安全停止状態。個人情報や予約番号は置かない。 |
 | `notified_slots_jal.txt` / `notified_slots_ana.txt` | JAL／ANAの通知済み枠。 |
@@ -121,9 +121,14 @@ TARGETS = [
 
 ### カービィ新予約サイト
 
-`kirby_august_monitor.py` はログイン不要の「予約空き状況のご案内（確認のみ）」で、人数を先に2名、店舗をTOKYOの順に選び、2026年11月へ移動する。11月16日は16:30〜17:30のみ（最優先）、11月17日・18日は全時間帯を確認する。公開カレンダー上の `○` だけを空きとしてLINE通知する。セルや予約ボタンはクリックしない。
+`kirby_august_monitor.py` はログイン不要の「予約空き状況のご案内（確認のみ）」で、2026年11月の次の2条件を順番に確認する。各条件で人数を先に、店舗をTOKYOの順に選ぶ。
 
-設定を変更する場合は、冒頭の `STORE` / `PEOPLE` / `TARGET_YEAR` / `TARGET_MONTH` / `TARGET_DAYS` / `TARGET_TIME_WINDOWS` を変更し、`notified_slots_kirby_august.txt` を空にする。対象月を変えるときはファイル名・通知文・ワークフロー名も整理する。
+1. 2名: 11月16日は16:30〜17:30のみ（最優先）、11月17日・18日は全時間帯
+2. 3名: 11月22日〜29日の全時間帯
+
+公開カレンダー上の `○` だけを空きとしてLINE通知する。セルや予約ボタンはクリックしない。
+
+設定を変更する場合は、冒頭の `STORE` / `TARGET_YEAR` / `TARGET_MONTH` / `TARGETS` を変更する。通知済み枠は条件ごとの人数・日程を含むキーで区別されるため、条件追加時は既存の記録を維持できる。既存条件の意味を変える場合は該当キーだけを削除する。対象月を変えるときはファイル名・通知文・ワークフロー名も整理する。
 
 ### JAL（`jal_monitor.py` 冒頭）
 `PEOPLE`（人数）、`COURSE_KEYWORD`（コース名の部分一致。`""`で全コース）、`MONTHS_AHEAD`。`EXCLUDE_DAYS_AHEAD=30` により、日本時間の今日からちょうど30日後（予約開始直後の新規公開枠）は通知しない。翌日になって同じ日が29日後になれば、空きが続いている場合は通常の通知対象になる。人数・コース等を変更した場合は `notified_slots_jal.txt` を空にリセットする。
@@ -164,7 +169,7 @@ gh workflow run monitor.yml
 
 JAL/ANAは `monitor.yml`→`jal-monitor.yml`/`ana-monitor.yml`、`test-once.yml`→`jal-test.yml`/`ana-test.yml` に読み替え。
 
-新予約サイトの8月監視は `kirby-august-monitor.yml` / `kirby-august-test.yml` を使う。旧7月用の `monitor.yml` は停止状態を維持する。
+新予約サイトの監視は `kirby-august-monitor.yml` / `kirby-august-test.yml` を使う（ファイル名は旧称）。旧7月用の `monitor.yml` は停止状態を維持する。
 
 ### 停止 / 再開
 ```bash

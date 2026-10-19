@@ -1,4 +1,4 @@
-"""カービィカフェTOKYOの2026年11月16〜18日を2名で監視する。"""
+"""カービィカフェTOKYOの2026年11月を2条件で監視する。"""
 
 from __future__ import annotations
 
@@ -15,16 +15,36 @@ from playwright.sync_api import Page, sync_playwright
 CALENDAR_URL = "https://kirbycafe-reserve.com/user/auth/calendar"
 LOGIN_URL = "https://kirbycafe-reserve.com/user/auth/login"
 STORE = "TOKYO"
-PEOPLE = 2
 TARGET_YEAR = 2026
 TARGET_MONTH = 11
-TARGET_DAYS = {16, 17, 18}
-# 日ごとの開始時刻フィルター（分）。未指定日は全時間帯。
-TARGET_TIME_WINDOWS = {
-    16: (16 * 60 + 30, 17 * 60 + 30),
-}
 TARGET_YYYYMM = f"{TARGET_YEAR:04d}-{TARGET_MONTH:02d}"
 TARGET_MONTH_LABEL = f"{TARGET_YEAR}年{TARGET_MONTH:02d}月"
+
+# リストの上から順に確認・通知する。2名の11/16条件を最優先にする。
+TARGETS = [
+    {
+        "key": "tokyo-2-nov16-18",
+        "name": "TOKYO・2名・11月16日〜18日",
+        "people": 2,
+        "days": {16, 17, 18},
+        # 日ごとの開始時刻フィルター（分）。未指定日は全時間帯。
+        "time_windows": {16: (16 * 60 + 30, 17 * 60 + 30)},
+        "notification_title": "【カービィカフェ TOKYO・11月16日〜18日】",
+        "notes": [
+            "最優先: 11月16日 16:30〜17:30",
+            "その他: 11月17日・18日 全時間帯",
+        ],
+    },
+    {
+        "key": "tokyo-3-nov22-29",
+        "name": "TOKYO・3名・11月22日〜29日",
+        "people": 3,
+        "days": set(range(22, 30)),
+        "time_windows": {},
+        "notification_title": "【カービィカフェ TOKYO・11月22日〜29日】",
+        "notes": ["11月22日〜29日 全時間帯"],
+    },
+]
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SEEN_FILE = os.path.join(ROOT, "notified_slots_kirby_august.txt")
@@ -92,7 +112,7 @@ def _move_to_target_month(page: Page) -> None:
     raise RuntimeError(f"{TARGET_MONTH_LABEL}へ移動できません")
 
 
-def _scan_visible_calendar(page: Page) -> list[str]:
+def _scan_visible_calendar(page: Page, target: dict) -> list[str]:
     shown = _shown_yyyymm(page)
     if shown != (TARGET_YEAR, TARGET_MONTH):
         raise RuntimeError(f"対象月が不一致です: 表示={shown} / 対象={(TARGET_YEAR, TARGET_MONTH)}")
@@ -143,9 +163,9 @@ def _scan_visible_calendar(page: Page) -> list[str]:
             day = column_days.get(column_index)
             if day is None:
                 raise RuntimeError(f"空きセルの日付列を特定できません: {column_index}")
-            if day not in TARGET_DAYS:
+            if day not in target["days"]:
                 continue
-            time_window = TARGET_TIME_WINDOWS.get(day)
+            time_window = target["time_windows"].get(day)
             if time_window and not (time_window[0] <= time_minutes <= time_window[1]):
                 continue
             slots.append(f"{TARGET_MONTH}月{day}日 {time_label}")
@@ -161,7 +181,7 @@ def _slot_sort_key(slot: str) -> tuple[int, int, int]:
     return int(match.group(1)), int(match.group(2)), int(match.group(3)) * 60 + int(match.group(4))
 
 
-def check() -> tuple[list[str], bool]:
+def check_target(target: dict) -> tuple[list[str], bool]:
     """空き枠と自己点検結果を返す。予約ボタンは一切クリックしない。"""
     last_day = monthrange(TARGET_YEAR, TARGET_MONTH)[1]
     if date.today() > date(TARGET_YEAR, TARGET_MONTH, last_day):
@@ -179,22 +199,22 @@ def check() -> tuple[list[str], bool]:
             page.locator("#StoreSelection").wait_for(state="visible", timeout=30_000)
 
             # 店舗変更時に現在の人数でデータ取得されるため、人数→店舗の順に選ぶ。
-            page.locator("#NumberOfCustomers").select_option(str(PEOPLE))
+            page.locator("#NumberOfCustomers").select_option(str(target["people"]))
             page.locator("#StoreSelection").select_option(STORE)
-            print(f"選択条件: 店舗={STORE} / 人数={PEOPLE}名")
+            print(f"選択条件: 店舗={STORE} / 人数={target['people']}名 / {target['name']}")
 
             page.locator(".current_month").wait_for(state="visible", timeout=60_000)
             _wait_for_calendar(page)
             _move_to_target_month(page)
             _wait_for_calendar(page)
-            page.screenshot(path="/tmp/kirby_august_debug.png", full_page=True)
+            page.screenshot(path=f"/tmp/kirby_{target['key']}.png", full_page=True)
 
-            slots = _scan_visible_calendar(page)
-            print(f"{TARGET_MONTH_LABEL}をスキャン: {len(slots)}件 {slots}")
+            slots = _scan_visible_calendar(page, target)
+            print(f"{target['name']}をスキャン: {len(slots)}件 {slots}")
             browser.close()
             return slots, True
     except Exception as error:
-        print(f"監視エラー: {type(error).__name__}: {error}")
+        print(f"監視エラー ({target['name']}): {type(error).__name__}: {error}")
         return [], False
 
 
@@ -279,30 +299,47 @@ def report_health(healthy: bool) -> None:
 def main() -> None:
     now = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
     seen = load_seen()
-    available, healthy = check()
-    report_health(healthy)
-    if not healthy:
+    all_healthy = True
+    messages: list[str] = []
+    newly_seen: set[str] = set()
+
+    for target in TARGETS:
+        available, healthy = check_target(target)
+        all_healthy = all_healthy and healthy
+        if not healthy:
+            continue
+
+        day_range = "-".join(str(day) for day in sorted(target["days"]))
+        prefix = f"{STORE}:{target['people']}:{TARGET_YYYYMM}:{day_range}"
+        new_slots = [slot for slot in available if f"{prefix}:{slot}" not in seen]
+        if not new_slots:
+            already_seen = len([slot for slot in available if f"{prefix}:{slot}" in seen])
+            print(
+                f"新しい空きなし ({now}) / {target['name']} / "
+                f"現在の空き={len(available)} / 既通知={already_seen}"
+            )
+            continue
+
+        # LINEに表示した枠だけを通知済みにする。21件目以降は次回に通知する。
+        shown_slots = new_slots[:20]
+        messages.append(
+            f"{target['notification_title']}\n"
+            f"{target['people']}名で予約できる空きが出ました！🎉\n\n"
+            + "\n".join(target["notes"])
+            + "\n\n"
+            + "\n".join(f"✅ {slot}" for slot in shown_slots)
+            + f"\n\nログインして予約してください。\n{LOGIN_URL}"
+        )
+        newly_seen.update(f"{prefix}:{slot}" for slot in shown_slots)
+        print(f"新しい空き: {target['name']} / {shown_slots}")
+
+    report_health(all_healthy)
+    if not messages:
         return
 
-    day_range = "-".join(str(day) for day in sorted(TARGET_DAYS))
-    prefix = f"{STORE}:{PEOPLE}:{TARGET_YYYYMM}:{day_range}"
-    new_slots = [slot for slot in available if f"{prefix}:{slot}" not in seen]
-    if not new_slots:
-        already_seen = len([slot for slot in available if f"{prefix}:{slot}" in seen])
-        print(f"新しい空きなし ({now}) / 現在の空き={len(available)} / 既通知={already_seen}")
-        return
-
-    message = (
-        "【カービィカフェ TOKYO・11月16日〜18日】\n"
-        f"{PEOPLE}名で予約できる空きが出ました！🎉\n\n"
-        "最優先: 11月16日 16:30〜17:30\n"
-        "その他: 11月17日・18日 全時間帯\n\n"
-        + "\n".join(f"✅ {slot}" for slot in new_slots[:20])
-        + f"\n\nログインして予約してください。\n{LOGIN_URL}"
-    )
-    send_line_message(message)
-    save_seen(seen | {f"{prefix}:{slot}" for slot in new_slots})
-    print(f"LINE通知送信完了: {new_slots}")
+    send_line_message("\n\n---\n\n".join(messages))
+    save_seen(seen | newly_seen)
+    print(f"LINE通知送信完了: {len(newly_seen)}件")
 
 
 if __name__ == "__main__":
