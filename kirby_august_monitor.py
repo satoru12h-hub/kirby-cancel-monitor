@@ -1,4 +1,4 @@
-"""カービィカフェTOKYOの2026年11月を2条件で監視する。"""
+"""カービィカフェTOKYOの2026年12月26〜31日を3名で監視する。"""
 
 from __future__ import annotations
 
@@ -16,33 +16,19 @@ CALENDAR_URL = "https://kirbycafe-reserve.com/user/auth/calendar"
 LOGIN_URL = "https://kirbycafe-reserve.com/user/auth/login"
 STORE = "TOKYO"
 TARGET_YEAR = 2026
-TARGET_MONTH = 11
+TARGET_MONTH = 12
 TARGET_YYYYMM = f"{TARGET_YEAR:04d}-{TARGET_MONTH:02d}"
 TARGET_MONTH_LABEL = f"{TARGET_YEAR}年{TARGET_MONTH:02d}月"
 
-# リストの上から順に確認・通知する。2名の11/16条件を最優先にする。
 TARGETS = [
     {
-        "key": "tokyo-2-nov16-18",
-        "name": "TOKYO・2名・11月16日〜18日",
-        "people": 2,
-        "days": {16, 17, 18},
-        # 日ごとの開始時刻フィルター（分）。未指定日は全時間帯。
-        "time_windows": {16: (16 * 60 + 30, 17 * 60 + 30)},
-        "notification_title": "【カービィカフェ TOKYO・11月16日〜18日】",
-        "notes": [
-            "最優先: 11月16日 16:30〜17:30",
-            "その他: 11月17日・18日 全時間帯",
-        ],
-    },
-    {
-        "key": "tokyo-3-nov22-29",
-        "name": "TOKYO・3名・11月22日〜29日",
+        "key": "tokyo-3-dec26-31",
+        "name": "TOKYO・3名・12月26日〜31日",
         "people": 3,
-        "days": set(range(22, 30)),
+        "days": set(range(26, 32)),
         "time_windows": {},
-        "notification_title": "【カービィカフェ TOKYO・11月22日〜29日】",
-        "notes": ["11月22日〜29日 全時間帯"],
+        "notification_title": "【カービィカフェ TOKYO・12月26日〜31日】",
+        "notes": ["12月26日〜31日 全時間帯"],
     },
 ]
 
@@ -280,14 +266,14 @@ def report_health(healthy: bool) -> None:
             print("異常継続中（本日アラート済み）")
             return
         send_line_message(
-            "⚠️【カービィカフェ 11月監視】\n"
+            "⚠️【カービィカフェ 12月監視】\n"
             "公開カレンダーを正常に読み取れませんでした。\n"
             "サイト変更や一時的な通信障害の可能性があります。自動で再試行します。"
         )
         state = f"ng:{today}"
     else:
         if previous.startswith("ng:"):
-            send_line_message("✅【カービィカフェ 11月監視】読み取りが復旧しました。監視を継続します。")
+            send_line_message("✅【カービィカフェ 12月監視】読み取りが復旧しました。監視を継続します。")
         state = "ok"
 
     if state != previous:
