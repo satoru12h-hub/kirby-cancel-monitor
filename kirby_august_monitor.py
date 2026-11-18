@@ -1,4 +1,4 @@
-"""カービィカフェTOKYOの2026年12月26〜31日を3名で監視する。"""
+"""カービィカフェTOKYOの2026年11月・12月を複数条件で監視する。"""
 
 from __future__ import annotations
 
@@ -15,16 +15,25 @@ from playwright.sync_api import Page, sync_playwright
 CALENDAR_URL = "https://kirbycafe-reserve.com/user/auth/calendar"
 LOGIN_URL = "https://kirbycafe-reserve.com/user/auth/login"
 STORE = "TOKYO"
-TARGET_YEAR = 2026
-TARGET_MONTH = 12
-TARGET_YYYYMM = f"{TARGET_YEAR:04d}-{TARGET_MONTH:02d}"
-TARGET_MONTH_LABEL = f"{TARGET_YEAR}年{TARGET_MONTH:02d}月"
 
 TARGETS = [
+    {
+        "key": "tokyo-5-nov25",
+        "name": "TOKYO・5名・11月25日",
+        "people": 5,
+        "year": 2026,
+        "month": 11,
+        "days": {25},
+        "time_windows": {},
+        "notification_title": "【カービィカフェ TOKYO・11月25日】",
+        "notes": ["11月25日 全時間帯"],
+    },
     {
         "key": "tokyo-3-dec26-31",
         "name": "TOKYO・3名・12月26日〜31日",
         "people": 3,
+        "year": 2026,
+        "month": 12,
         "days": set(range(26, 32)),
         "time_windows": {},
         "notification_title": "【カービィカフェ TOKYO・12月26日〜31日】",
@@ -77,8 +86,8 @@ def _wait_for_calendar(page: Page) -> None:
     )
 
 
-def _move_to_target_month(page: Page) -> None:
-    target_index = TARGET_YEAR * 12 + TARGET_MONTH
+def _move_to_target_month(page: Page, target: dict) -> None:
+    target_index = target["year"] * 12 + target["month"]
     for _ in range(14):
         shown = _shown_yyyymm(page)
         if shown is None:
@@ -95,13 +104,14 @@ def _move_to_target_month(page: Page) -> None:
         page.wait_for_timeout(500)
         page.locator(".calendar-area table").wait_for(state="visible", timeout=60_000)
 
-    raise RuntimeError(f"{TARGET_MONTH_LABEL}へ移動できません")
+    raise RuntimeError(f"{target['year']}年{target['month']:02d}月へ移動できません")
 
 
 def _scan_visible_calendar(page: Page, target: dict) -> list[str]:
     shown = _shown_yyyymm(page)
-    if shown != (TARGET_YEAR, TARGET_MONTH):
-        raise RuntimeError(f"対象月が不一致です: 表示={shown} / 対象={(TARGET_YEAR, TARGET_MONTH)}")
+    target_yyyymm = (target["year"], target["month"])
+    if shown != target_yyyymm:
+        raise RuntimeError(f"対象月が不一致です: 表示={shown} / 対象={target_yyyymm}")
 
     table = page.locator(".calendar-area table")
     headers = table.locator("thead th").all_inner_texts()
@@ -154,7 +164,7 @@ def _scan_visible_calendar(page: Page, target: dict) -> list[str]:
             time_window = target["time_windows"].get(day)
             if time_window and not (time_window[0] <= time_minutes <= time_window[1]):
                 continue
-            slots.append(f"{TARGET_MONTH}月{day}日 {time_label}")
+            slots.append(f"{target['month']}月{day}日 {time_label}")
 
     print(f"セル内訳: {symbol_counts}")
     return sorted(set(slots), key=_slot_sort_key)
@@ -169,9 +179,9 @@ def _slot_sort_key(slot: str) -> tuple[int, int, int]:
 
 def check_target(target: dict) -> tuple[list[str], bool]:
     """空き枠と自己点検結果を返す。予約ボタンは一切クリックしない。"""
-    last_day = monthrange(TARGET_YEAR, TARGET_MONTH)[1]
-    if date.today() > date(TARGET_YEAR, TARGET_MONTH, last_day):
-        print("監視対象月が終了しています")
+    last_day = monthrange(target["year"], target["month"])[1]
+    if date.today() > date(target["year"], target["month"], last_day):
+        print(f"監視対象月が終了しています: {target['name']}")
         return [], True
 
     try:
@@ -191,7 +201,7 @@ def check_target(target: dict) -> tuple[list[str], bool]:
 
             page.locator(".current_month").wait_for(state="visible", timeout=60_000)
             _wait_for_calendar(page)
-            _move_to_target_month(page)
+            _move_to_target_month(page, target)
             _wait_for_calendar(page)
             page.screenshot(path=f"/tmp/kirby_{target['key']}.png", full_page=True)
 
@@ -266,14 +276,14 @@ def report_health(healthy: bool) -> None:
             print("異常継続中（本日アラート済み）")
             return
         send_line_message(
-            "⚠️【カービィカフェ 12月監視】\n"
+            "⚠️【カービィカフェ 11月・12月監視】\n"
             "公開カレンダーを正常に読み取れませんでした。\n"
             "サイト変更や一時的な通信障害の可能性があります。自動で再試行します。"
         )
         state = f"ng:{today}"
     else:
         if previous.startswith("ng:"):
-            send_line_message("✅【カービィカフェ 12月監視】読み取りが復旧しました。監視を継続します。")
+            send_line_message("✅【カービィカフェ 11月・12月監視】読み取りが復旧しました。監視を継続します。")
         state = "ok"
 
     if state != previous:
@@ -296,7 +306,8 @@ def main() -> None:
             continue
 
         day_range = "-".join(str(day) for day in sorted(target["days"]))
-        prefix = f"{STORE}:{target['people']}:{TARGET_YYYYMM}:{day_range}"
+        target_yyyymm = f"{target['year']:04d}-{target['month']:02d}"
+        prefix = f"{STORE}:{target['people']}:{target_yyyymm}:{day_range}"
         new_slots = [slot for slot in available if f"{prefix}:{slot}" not in seen]
         if not new_slots:
             already_seen = len([slot for slot in available if f"{prefix}:{slot}" in seen])
