@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from calendar import monthrange
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import requests
 from playwright.sync_api import Page, sync_playwright
@@ -15,6 +15,7 @@ from playwright.sync_api import Page, sync_playwright
 CALENDAR_URL = "https://kirbycafe-reserve.com/user/auth/calendar"
 LOGIN_URL = "https://kirbycafe-reserve.com/user/auth/login"
 STORE = "TOKYO"
+JST = ZoneInfo("Asia/Tokyo")
 
 TARGETS = [
     {
@@ -118,6 +119,20 @@ def _move_to_target_month(page: Page, target: dict) -> None:
     raise RuntimeError(f"{target['year']}年{target['month']:02d}月へ移動できません")
 
 
+def _slot_has_started(target: dict, day: int, time_minutes: int, now: datetime | None = None) -> bool:
+    """日本時間で開始済みの枠ならTrueを返す。"""
+    current = now or datetime.now(JST)
+    slot_start = datetime(
+        target["year"],
+        target["month"],
+        day,
+        time_minutes // 60,
+        time_minutes % 60,
+        tzinfo=JST,
+    )
+    return slot_start <= current
+
+
 def _scan_visible_calendar(page: Page, target: dict) -> list[str]:
     shown = _shown_yyyymm(page)
     target_yyyymm = (target["year"], target["month"])
@@ -141,6 +156,7 @@ def _scan_visible_calendar(page: Page, target: dict) -> list[str]:
         raise RuntimeError("時間帯の行がありません")
 
     slots: list[str] = []
+    skipped_started_slots = 0
     symbol_counts = {"○": 0, "×": 0, "-": 0, "blank": 0, "other": 0}
     for row_index in range(rows.count()):
         row = rows.nth(row_index)
@@ -172,12 +188,16 @@ def _scan_visible_calendar(page: Page, target: dict) -> list[str]:
                 raise RuntimeError(f"空きセルの日付列を特定できません: {column_index}")
             if day not in target["days"]:
                 continue
+            # サイトが開始済みの当日枠を「○」で残す場合があるため、JSTで除外する。
+            if _slot_has_started(target, day, time_minutes):
+                skipped_started_slots += 1
+                continue
             time_window = target["time_windows"].get(day)
             if time_window and not (time_window[0] <= time_minutes <= time_window[1]):
                 continue
             slots.append(f"{target['month']}月{day}日 {time_label}")
 
-    print(f"セル内訳: {symbol_counts}")
+    print(f"セル内訳: {symbol_counts} / 開始済み除外={skipped_started_slots}件")
     return sorted(set(slots), key=_slot_sort_key)
 
 
@@ -190,9 +210,9 @@ def _slot_sort_key(slot: str) -> tuple[int, int, int]:
 
 def check_target(target: dict) -> tuple[list[str], bool]:
     """空き枠と自己点検結果を返す。予約ボタンは一切クリックしない。"""
-    last_day = monthrange(target["year"], target["month"])[1]
-    if date.today() > date(target["year"], target["month"], last_day):
-        print(f"監視対象月が終了しています: {target['name']}")
+    target_end = date(target["year"], target["month"], max(target["days"]))
+    if datetime.now(JST).date() > target_end:
+        print(f"監視対象日が終了しています: {target['name']}")
         return [], True
 
     try:
@@ -280,7 +300,7 @@ def save_seen(seen: set[str]) -> None:
 
 
 def report_health(healthy: bool) -> None:
-    today = date.today().isoformat()
+    today = datetime.now(JST).date().isoformat()
     previous = _read_text(HEALTH_FILE)
     if not healthy:
         if previous == f"ng:{today}":
@@ -304,7 +324,7 @@ def report_health(healthy: bool) -> None:
 
 
 def main() -> None:
-    now = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
+    now = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
     seen = load_seen()
     all_healthy = True
     messages: list[str] = []
