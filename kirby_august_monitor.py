@@ -18,6 +18,17 @@ STORE = "TOKYO"
 
 TARGETS = [
     {
+        "key": "tokyo-2-nov19",
+        "name": "TOKYO・2名・11月19日",
+        "people": 2,
+        "year": 2026,
+        "month": 11,
+        "days": {19},
+        "time_windows": {},
+        "notification_title": "【カービィカフェ TOKYO・11月19日】",
+        "notes": ["11月19日 全時間帯"],
+    },
+    {
         "key": "tokyo-5-nov25",
         "name": "TOKYO・5名・11月25日",
         "people": 5,
