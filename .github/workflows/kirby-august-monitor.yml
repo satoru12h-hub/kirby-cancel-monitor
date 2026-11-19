@@ -32,7 +32,7 @@ jobs:
           pip install playwright requests
           playwright install chromium --with-deps
 
-      - name: 東京・11月19日2名／11月25日5名／12月26日〜31日3名を確認（2分おき）
+      - name: 東京・11月25日5名／12月26日〜31日3名を確認（2分おき）
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
