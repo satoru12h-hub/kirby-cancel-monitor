@@ -19,9 +19,9 @@ JST = ZoneInfo("Asia/Tokyo")
 
 TARGETS = [
     {
-        "key": "tokyo-5-nov25",
-        "name": "TOKYO・5名・11月25日",
-        "people": 5,
+        "key": "tokyo-2-nov25",
+        "name": "TOKYO・2名・11月25日",
+        "people": 2,
         "year": 2026,
         "month": 11,
         "days": {25},
