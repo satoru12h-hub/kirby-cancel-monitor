@@ -1,4 +1,4 @@
-"""カービィカフェTOKYOの2026年11月・12月を複数条件で監視する。"""
+"""カービィカフェTOKYOの2026年12月26〜31日を3名で監視する。"""
 
 from __future__ import annotations
 
@@ -18,17 +18,6 @@ STORE = "TOKYO"
 JST = ZoneInfo("Asia/Tokyo")
 
 TARGETS = [
-    {
-        "key": "tokyo-2-nov25",
-        "name": "TOKYO・2名・11月25日",
-        "people": 2,
-        "year": 2026,
-        "month": 11,
-        "days": {25},
-        "time_windows": {},
-        "notification_title": "【カービィカフェ TOKYO・11月25日】",
-        "notes": ["11月25日 全時間帯"],
-    },
     {
         "key": "tokyo-3-dec26-31",
         "name": "TOKYO・3名・12月26日〜31日",
@@ -296,14 +285,14 @@ def report_health(healthy: bool) -> None:
             print("異常継続中（本日アラート済み）")
             return
         send_line_message(
-            "⚠️【カービィカフェ 11月・12月監視】\n"
+            "⚠️【カービィカフェ 12月監視】\n"
             "公開カレンダーを正常に読み取れませんでした。\n"
             "サイト変更や一時的な通信障害の可能性があります。自動で再試行します。"
         )
         state = f"ng:{today}"
     else:
         if previous.startswith("ng:"):
-            send_line_message("✅【カービィカフェ 11月・12月監視】読み取りが復旧しました。監視を継続します。")
+            send_line_message("✅【カービィカフェ 12月監視】読み取りが復旧しました。監視を継続します。")
         state = "ok"
 
     if state != previous:
