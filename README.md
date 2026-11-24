@@ -11,7 +11,7 @@
 | 監視 | 本番ワークフロー | 状態 | 現在の設定 |
 |---|---|---|---|
 | カービィカフェ TOKYO（旧7月ページ） | `monitor.yml` | ⏹️ 停止 | 2名・7/16〜19（全時間帯） |
-| カービィカフェ TOKYO（新予約サイト） | `kirby-august-monitor.yml` | ✅ 稼働 | 3名・2026年12月26日〜31日（全時間帯） |
+| カービィカフェ TOKYO（新予約サイト） | `kirby-december-monitor.yml` | ✅ 稼働 | 3名・2026年12月26日〜31日（全時間帯） |
 | JAL工場見学 SKY MUSEUM | `jal-monitor.yml` | ⏹️ 停止 | 4名・工場見学コース・日本時間のちょうど30日後は除外 |
 | ANA工場見学 | `ana-monitor.yml` | ⏹️ 停止（**意図的**・触らない） | 4名 |
 
@@ -45,7 +45,7 @@ GitHub Actions（cronで1日4回、各ジョブが6時間弱ループ）
 | `pokemon_lottery_monitor.py` | ポケモンセンターオンラインの新しい抽選案内を15分おきに確認し、案内時と応募開始約1時間後にLINE通知する。待合室表示中は正常な一時状態として次回に再確認する。 |
 | `.github/workflows/monitor.yml` | カービィ本番（cron＋内部ループ）。`sleep` の秒数がチェック間隔。 |
 | `.github/workflows/test-once.yml` | カービィを1回だけ実行する検証用（手動起動）。 |
-| `.github/workflows/kirby-august-monitor.yml` / `kirby-august-test.yml` | 新予約サイトの監視 本番／検証（ファイル名は互換性のため旧称のまま）。 |
+| `.github/workflows/kirby-december-monitor.yml` / `kirby-august-test.yml` | 新予約サイトの監視 本番／検証（検証側のファイル名は旧称のまま）。 |
 | `.github/workflows/jal-monitor.yml` / `jal-test.yml` | JAL 本番／検証。 |
 | `.github/workflows/ana-monitor.yml` / `ana-test.yml` | ANA 本番／検証。 |
 | `.github/workflows/pokemon-lottery-monitor.yml` | ポケモンセンターオンライン抽選案内の監視（15分おき／手動テスト対応）。 |
@@ -168,7 +168,7 @@ gh workflow run monitor.yml
 
 JAL/ANAは `monitor.yml`→`jal-monitor.yml`/`ana-monitor.yml`、`test-once.yml`→`jal-test.yml`/`ana-test.yml` に読み替え。
 
-新予約サイトの監視は `kirby-august-monitor.yml` / `kirby-august-test.yml` を使う（ファイル名は旧称）。旧7月用の `monitor.yml` は停止状態を維持する。
+新予約サイトの監視は `kirby-december-monitor.yml` / `kirby-august-test.yml` を使う。旧7月用の `monitor.yml` は停止状態を維持する。
 
 ### 停止 / 再開
 ```bash

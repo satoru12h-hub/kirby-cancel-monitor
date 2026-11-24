@@ -13,7 +13,6 @@ permissions:
   contents: write
 
 concurrency:
-  # 2026-11-24に旧groupの起動要求がGitHub側で不整合状態になったため、新groupへ切替。
   group: kirby-december-monitor-production
   cancel-in-progress: false
 
