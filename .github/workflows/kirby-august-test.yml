@@ -1,4 +1,4 @@
-name: カービィ12月監視 テスト（手動1回）
+name: カービィカフェ東京 空き監視テスト（手動1回）
 
 on:
   workflow_dispatch:
@@ -47,7 +47,7 @@ jobs:
                   "to": os.environ["LINE_USER_ID"],
                   "messages": [{
                       "type": "text",
-                      "text": "【カービィカフェ 12月監視】テスト通知です。TOKYO・3名・12月26日〜31日（全時間帯）の空きが出たらお知らせします。",
+                      "text": "【カービィカフェ東京 空き監視】テスト通知です。3名で、11月26日（全時間帯）、11月28〜30日（日本時間17:00より前）、12月26〜31日（全時間帯）の空きが出たらお知らせします。",
                   }],
               },
               timeout=20,
@@ -66,6 +66,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kirby-december-debug-screenshot
+          name: kirby-calendar-debug-screenshot
           path: /tmp/kirby_*.png
           if-no-files-found: ignore
