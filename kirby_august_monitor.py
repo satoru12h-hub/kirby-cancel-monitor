@@ -19,18 +19,6 @@ JST = ZoneInfo("Asia/Tokyo")
 
 TARGETS = [
     {
-        "key": "tokyo-3-nov26-28-30",
-        "name": "TOKYO・3名・11月26日・28〜30日",
-        "people": 3,
-        "year": 2026,
-        "month": 11,
-        "days": {26, 28, 29, 30},
-        # 既存の時刻範囲は両端を含む。16:59を上限として17:00を除外。
-        "time_windows": {day: (0, 17 * 60 - 1) for day in (28, 29, 30)},
-        "notification_title": "【カービィカフェ TOKYO・11月26日・28〜30日】",
-        "notes": ["11月26日 全時間帯", "11月28〜30日 17:00より前（日本時間）"],
-    },
-    {
         "key": "tokyo-3-dec26-31",
         "name": "TOKYO・3名・12月26日〜31日",
         "people": 3,
